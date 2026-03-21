@@ -206,14 +206,6 @@ create_xattr_image() {
 
         # Directory xattr
         setfattr -n user.dirflag -v "true" "${content_dir}/xattr_dir" 2>/dev/null || true
-
-        # Check if xattrs were actually written (filesystem may not support them)
-        if getfattr -n user.comment --only-values "${content_dir}/file1.txt" &>/dev/null; then
-            XATTRS_AVAILABLE=true
-            log_debug "Xattrs successfully written to test files"
-        else
-            log_warn "Xattrs not supported on host filesystem - tests will be skipped"
-        fi
     fi
 
     # Create SquashFS image WITH xattrs (remove -no-xattrs)
@@ -227,6 +219,17 @@ create_xattr_image() {
     local size
     size=$(stat -c%s "${image_path}" 2>/dev/null || stat -f%z "${image_path}" 2>/dev/null)
     log_info "Created xattr test image: ${image_path} (${size} bytes)"
+
+    # Verify xattrs were stored in the image using unsquashfs
+    # This is more reliable than checking the source filesystem
+    if [ "${HAS_GETFATTR}" = true ] && command -v unsquashfs &>/dev/null; then
+        if unsquashfs -ll "${image_path}" 2>/dev/null | grep -q "user\."; then
+            XATTRS_AVAILABLE=true
+            log_debug "Xattrs found in squashfs image"
+        else
+            log_warn "No xattrs found in squashfs image - tests will be skipped"
+        fi
+    fi
 
     TEST_IMAGE="${image_path}"
 }

@@ -39,30 +39,10 @@ jobs:
           cd build
           make -j$(nproc)
 
-      - name: Run unit tests
+      - name: Run tests
         run: |
           cd build
-          ctest --output-on-failure
-
-      - name: Run functional tests
-        run: |
-          cd build
-          ../tests/functional/test_basic.sh -f $(pwd)/squashfs-fuse -v
-
-      - name: Run Python read tests
-        run: |
-          cd build
-          python3 ../tests/functional/test_read.py -f $(pwd)/squashfs-fuse -v
-
-      - name: Run xattr tests
-        run: |
-          cd build
-          ../tests/functional/test_xattr.sh -f $(pwd)/squashfs-fuse -v
-
-      - name: Run error path tests
-        run: |
-          cd build
-          ../tests/functional/test_error_paths.sh -f $(pwd)/squashfs-fuse -v
+          make test
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
