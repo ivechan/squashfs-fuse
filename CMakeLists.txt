@@ -138,6 +138,17 @@ if(BUILD_TESTS)
             LABELS "functional"
         )
 
+        # Error paths test
+        add_test(
+            NAME functional_error_paths
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_error_paths.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_error_paths PROPERTIES
+            TIMEOUT 120
+            LABELS "functional"
+        )
+
         message(STATUS "Functional tests enabled")
     endif()
 

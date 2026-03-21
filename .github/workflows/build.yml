@@ -59,6 +59,11 @@ jobs:
           cd build
           ../tests/functional/test_xattr.sh -f $(pwd)/squashfs-fuse -v
 
+      - name: Run error path tests
+        run: |
+          cd build
+          ../tests/functional/test_error_paths.sh -f $(pwd)/squashfs-fuse -v
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
