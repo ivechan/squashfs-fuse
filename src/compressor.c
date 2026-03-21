@@ -6,12 +6,17 @@
  *
  * This file implements the compressor abstraction layer for SquashFS.
  * Supported compressors: zlib (gzip), zstd
+ *
+ * Thread Safety:
+ * - Zstd uses Thread-Local Storage (TLS) for decompression contexts
+ * - Each thread gets its own ZSTD_DStream, avoiding lock contention
  */
 
 #include "compressor.h"
 
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #include <zlib.h>
 #include <zstd.h>
@@ -129,11 +134,61 @@ sqfs_compressor_t *sqfs_compressor_zlib_new(void)
 
 /*
  * Zstd compressor implementation
+ *
+ * Uses Thread-Local Storage (TLS) for decompression contexts.
+ * Each thread gets its own ZSTD_DStream to avoid lock contention
+ * in multi-threaded FUSE mode.
  */
 
-typedef struct {
+/* Thread-local storage for ZSTD_DStream */
+static pthread_key_t zstd_dstream_key;
+static pthread_once_t zstd_key_once = PTHREAD_ONCE_INIT;
+
+/* Free a thread-local ZSTD_DStream when thread exits */
+static void zstd_dstream_free(void *ptr)
+{
+    ZSTD_DStream *dstream = (ZSTD_DStream *)ptr;
+    if (dstream != NULL) {
+        ZSTD_freeDStream(dstream);
+    }
+}
+
+/* Create the TLS key (called once per process) */
+static void zstd_create_key(void)
+{
+    pthread_key_create(&zstd_dstream_key, zstd_dstream_free);
+}
+
+/* Get or create the current thread's ZSTD_DStream */
+static ZSTD_DStream *get_or_create_dstream(void)
+{
     ZSTD_DStream *dstream;
-} zstd_ctx_t;
+
+    /* Ensure TLS key is created */
+    pthread_once(&zstd_key_once, zstd_create_key);
+
+    /* Get existing context for this thread */
+    dstream = (ZSTD_DStream *)pthread_getspecific(zstd_dstream_key);
+    if (dstream != NULL) {
+        return dstream;
+    }
+
+    /* Create new context for this thread */
+    dstream = ZSTD_createDStream();
+    if (dstream == NULL) {
+        return NULL;
+    }
+
+    /* Initialize the decompression context */
+    if (ZSTD_isError(ZSTD_initDStream(dstream))) {
+        ZSTD_freeDStream(dstream);
+        return NULL;
+    }
+
+    /* Store in TLS */
+    pthread_setspecific(zstd_dstream_key, dstream);
+    return dstream;
+}
 
 static int zstd_decompress(const void *src, size_t src_size,
                            void *dst, size_t dst_size, size_t *out_size)
@@ -147,15 +202,15 @@ static int zstd_decompress(const void *src, size_t src_size,
         return SQFS_COMP_ERROR;
     }
 
-    /* Create a one-shot decompression context */
-    dstream = ZSTD_createDStream();
+    /* Get thread-local decompression context */
+    dstream = get_or_create_dstream();
     if (dstream == NULL) {
         return SQFS_COMP_NO_MEMORY;
     }
 
-    ret = ZSTD_initDStream(dstream);
+    /* Reset the context for a new decompression session */
+    ret = ZSTD_DCtx_reset(dstream, ZSTD_reset_session_only);
     if (ZSTD_isError(ret)) {
-        ZSTD_freeDStream(dstream);
         return SQFS_COMP_ERROR;
     }
 
@@ -168,10 +223,8 @@ static int zstd_decompress(const void *src, size_t src_size,
     output.pos = 0;
 
     ret = ZSTD_decompressStream(dstream, &output, &input);
-    ZSTD_freeDStream(dstream);
 
     if (ZSTD_isError(ret)) {
-        /* Generic error handling */
         return SQFS_COMP_ERROR;
     }
 
@@ -187,43 +240,18 @@ static int zstd_decompress(const void *src, size_t src_size,
     return SQFS_COMP_OK;
 }
 
+/* No-op init/destroy for TLS-based decompression */
 static int zstd_init(void **ctx)
 {
-    zstd_ctx_t *c;
-    size_t ret;
-
-    c = calloc(1, sizeof(*c));
-    if (c == NULL) {
-        return SQFS_COMP_NO_MEMORY;
-    }
-
-    c->dstream = ZSTD_createDStream();
-    if (c->dstream == NULL) {
-        free(c);
-        return SQFS_COMP_NO_MEMORY;
-    }
-
-    ret = ZSTD_initDStream(c->dstream);
-    if (ZSTD_isError(ret)) {
-        ZSTD_freeDStream(c->dstream);
-        free(c);
-        return SQFS_COMP_ERROR;
-    }
-
-    *ctx = c;
+    /* TLS handles context creation, no per-instance context needed */
+    *ctx = NULL;
     return SQFS_COMP_OK;
 }
 
 static void zstd_destroy(void *ctx)
 {
-    zstd_ctx_t *c = ctx;
-
-    if (c != NULL) {
-        if (c->dstream != NULL) {
-            ZSTD_freeDStream(c->dstream);
-        }
-        free(c);
-    }
+    /* TLS handles cleanup via pthread_key_create destructor */
+    (void)ctx;
 }
 
 sqfs_compressor_t *sqfs_compressor_zstd_new(void)

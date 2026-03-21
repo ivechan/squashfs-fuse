@@ -57,6 +57,42 @@ typedef struct {
 } sqfs_data_block_t;
 
 /*
+ * Data block cache entry
+ * Represents a cached, decompressed data block.
+ */
+typedef struct {
+    uint64_t block_pos;     /* On-disk position (cache key) */
+    void *data;             /* Decompressed data (block_size bytes) */
+    size_t data_size;       /* Actual data size */
+    bool is_cached;         /* True if data is valid */
+} sqfs_data_block_entry_t;
+
+/*
+ * Create a new data block cache entry.
+ *
+ * @return Pointer to allocated entry, or NULL on failure
+ */
+sqfs_data_block_entry_t *sqfs_data_block_cache_new(void);
+
+/*
+ * Free a data block cache entry.
+ *
+ * @param entry  Entry to free (called by cache as free_fn)
+ */
+void sqfs_data_block_cache_free(void *entry);
+
+/*
+ * Generate cache key for a data block.
+ * Uses the on-disk position as a unique identifier.
+ *
+ * @param block_pos  On-disk position of the block
+ * @return Cache key
+ */
+static inline uint64_t sqfs_data_block_cache_key(uint64_t block_pos) {
+    return block_pos;
+}
+
+/*
  * File read context
  * Maintains state for streaming file reads
  */

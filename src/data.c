@@ -604,7 +604,34 @@ static int sqfs_data_read_internal(sqfs_data_ops_t *ops, sqfs_inode_t *inode,
             continue;
         }
 
-        /* Read and decompress block */
+        /*
+         * Try to read from cache first.
+         * Use block_pos as the cache key (unique per on-disk block).
+         */
+        sqfs_data_block_entry_t *cached_block = NULL;
+        cache_key_t cache_key = sqfs_data_block_cache_key(block_pos);
+
+        if (ops->data_cache != NULL) {
+            cached_block = (sqfs_data_block_entry_t *)sqfs_cache_get(
+                ops->data_cache, cache_key);
+        }
+
+        if (cached_block != NULL && cached_block->is_cached) {
+            /* Cache hit - use cached data */
+            to_copy = cached_block->data_size - block_offset;
+            if (to_copy > bytes_remaining) {
+                to_copy = bytes_remaining;
+            }
+            if (to_copy > 0 && block_offset < cached_block->data_size) {
+                memcpy(out_ptr + bytes_read,
+                       (char *)cached_block->data + block_offset, to_copy);
+                bytes_read += to_copy;
+                bytes_remaining -= to_copy;
+                continue;
+            }
+        }
+
+        /* Cache miss - read and decompress block */
         ret = sqfs_data_read_block(ops->fd, block_pos, block_disk_size,
                                    block_buf, file_ctx.block_size, ops->comp);
 
@@ -614,14 +641,42 @@ static int sqfs_data_read_internal(sqfs_data_ops_t *ops, sqfs_inode_t *inode,
             return ret;
         }
 
+        /* Determine actual data size */
+        size_t actual_size = (size_t)ret;
+
+        /* Store in cache for future reads */
+        if (ops->data_cache != NULL && actual_size > 0) {
+            sqfs_data_block_entry_t *cache_entry = sqfs_data_block_cache_new();
+            if (cache_entry != NULL) {
+                cache_entry->data = sqfs_malloc(actual_size);
+                if (cache_entry->data != NULL) {
+                    memcpy(cache_entry->data, block_buf, actual_size);
+                    cache_entry->data_size = actual_size;
+                    cache_entry->block_pos = block_pos;
+                    cache_entry->is_cached = true;
+
+                    /* Put in cache - ignore errors, cache is optional */
+                    sqfs_cache_put(ops->data_cache, cache_key, cache_entry,
+                                   sizeof(*cache_entry) + actual_size);
+                } else {
+                    sqfs_data_block_cache_free(cache_entry);
+                }
+            }
+        }
+
         /* Copy data from block to output buffer */
         to_copy = file_ctx.block_size - block_offset;
         if (to_copy > bytes_remaining) {
             to_copy = bytes_remaining;
         }
-        memcpy(out_ptr + bytes_read, (char *)block_buf + block_offset, to_copy);
-        bytes_read += to_copy;
-        bytes_remaining -= to_copy;
+        if (to_copy > actual_size - block_offset) {
+            to_copy = actual_size - block_offset;
+        }
+        if (to_copy > 0) {
+            memcpy(out_ptr + bytes_read, (char *)block_buf + block_offset, to_copy);
+            bytes_read += to_copy;
+            bytes_remaining -= to_copy;
+        }
     }
 
     sqfs_free(block_buf);
@@ -696,5 +751,39 @@ void sqfs_data_fill_sparse(void *buffer, size_t size)
 {
     if (buffer && size > 0) {
         memset(buffer, 0, size);
+    }
+}
+
+/* ============================================================================
+ * Data Block Cache Operations
+ * ============================================================================ */
+
+sqfs_data_block_entry_t *sqfs_data_block_cache_new(void)
+{
+    sqfs_data_block_entry_t *entry;
+
+    entry = (sqfs_data_block_entry_t *)sqfs_calloc(1, sizeof(*entry));
+    if (entry == NULL) {
+        return NULL;
+    }
+
+    entry->block_pos = 0;
+    entry->data = NULL;
+    entry->data_size = 0;
+    entry->is_cached = false;
+
+    return entry;
+}
+
+void sqfs_data_block_cache_free(void *ptr)
+{
+    sqfs_data_block_entry_t *entry = (sqfs_data_block_entry_t *)ptr;
+
+    if (entry != NULL) {
+        if (entry->data != NULL) {
+            sqfs_free(entry->data);
+            entry->data = NULL;
+        }
+        sqfs_free(entry);
     }
 }

@@ -797,7 +797,8 @@ static int init_context(sqfs_fuse_ctx_t *ctx, int fd,
         }
 
         ret = sqfs_cache_init(&ctx->data_cache,
-                              CACHE_DATA_MAX_ENTRIES, data_mem, NULL);
+                              CACHE_DATA_MAX_ENTRIES, data_mem,
+                              sqfs_data_block_cache_free);
         if (ret != 0) {
             goto error;
         }
