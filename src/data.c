@@ -62,10 +62,13 @@ static void calculate_block_layout(sqfs_file_ctx_t *ctx, uint64_t file_size,
     ctx->block_count = file_size / block_size;
     ctx->tail_size = file_size % block_size;
 
-    /* If there's a tail and no fragments are used, the tail is stored
-     * as a separate block (included in block_count for simplicity) */
+    /*
+     * If there's a tail and no fragments are used, the tail is stored
+     * as a separate partial block, so we need to count it.
+     * With fragments, the tail goes in a fragment block instead.
+     */
     if (ctx->tail_size > 0 && sqfs_fragment_is_none(ctx->frag_idx)) {
-        /* Tail stored as separate full block - already counted */
+        ctx->block_count++;
     }
 }
 

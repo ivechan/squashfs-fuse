@@ -65,6 +65,16 @@ CMAKE_BINARY_DIR = /home/jing/squashfs-fuse
 #=============================================================================
 # Targets provided globally by CMake.
 
+# Special rule for the target test
+test:
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running tests..."
+	/usr/bin/ctest --force-new-ctest-process $(ARGS)
+.PHONY : test
+
+# Special rule for the target test
+test/fast: test
+.PHONY : test/fast
+
 # Special rule for the target edit_cache
 edit_cache:
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "No interactive CMake dialog available..."
@@ -173,6 +183,45 @@ squashfs-fuse: cmake_check_build_system
 squashfs-fuse/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/squashfs-fuse.dir/build.make CMakeFiles/squashfs-fuse.dir/build
 .PHONY : squashfs-fuse/fast
+
+#=============================================================================
+# Target rules for targets named test_verbose
+
+# Build rule for target.
+test_verbose: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_verbose
+.PHONY : test_verbose
+
+# fast build rule for target.
+test_verbose/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_verbose.dir/build.make CMakeFiles/test_verbose.dir/build
+.PHONY : test_verbose/fast
+
+#=============================================================================
+# Target rules for targets named test_functional
+
+# Build rule for target.
+test_functional: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_functional
+.PHONY : test_functional
+
+# fast build rule for target.
+test_functional/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_functional.dir/build.make CMakeFiles/test_functional.dir/build
+.PHONY : test_functional/fast
+
+#=============================================================================
+# Target rules for targets named test_performance
+
+# Build rule for target.
+test_performance: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_performance
+.PHONY : test_performance
+
+# fast build rule for target.
+test_performance/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_performance.dir/build.make CMakeFiles/test_performance.dir/build
+.PHONY : test_performance/fast
 
 src/cache.o: src/cache.c.o
 .PHONY : src/cache.o
@@ -474,6 +523,10 @@ help:
 	@echo "... install/strip"
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
+	@echo "... test"
+	@echo "... test_functional"
+	@echo "... test_performance"
+	@echo "... test_verbose"
 	@echo "... squashfs-fuse"
 	@echo "... src/cache.o"
 	@echo "... src/cache.i"

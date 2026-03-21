@@ -902,6 +902,7 @@ static void *sqfs_fuse_init(struct fuse_conn_info *conn,
                             struct fuse_config *cfg) {
     (void)conn;
     cfg->kernel_cache = 1;
+    cfg->use_ino = 1;  /* Honor st_ino field for correct hardlink support */
     return &g_ctx;
 }
 

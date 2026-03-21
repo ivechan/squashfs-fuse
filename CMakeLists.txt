@@ -79,6 +79,7 @@ if(BUILD_TESTS)
             tests/unit/test_directory.c
             tests/unit/test_fragment.c
             tests/unit/test_metadata.c
+            tests/unit/test_export.c
         )
 
         # Common sources for tests (exclude main.c)
@@ -158,6 +159,116 @@ if(BUILD_TESTS)
             LABELS "functional"
         )
 
+        # Special files test (block/char devices, FIFO, sockets)
+        add_test(
+            NAME functional_special_files
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_special_files.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_special_files PROPERTIES
+            TIMEOUT 120
+            LABELS "functional"
+        )
+
+        # Hardlinks test
+        add_test(
+            NAME functional_hardlinks
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_hardlinks.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_hardlinks PROPERTIES
+            TIMEOUT 120
+            LABELS "functional"
+        )
+
+        # Sparse files test
+        add_test(
+            NAME functional_sparse_files
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_sparse_files.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_sparse_files PROPERTIES
+            TIMEOUT 120
+            LABELS "functional"
+        )
+
+        # Large files test (>4GB)
+        add_test(
+            NAME functional_large_files
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_large_files.sh --quick -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_large_files PROPERTIES
+            TIMEOUT 300
+            LABELS "functional"
+        )
+
+        # Deep directories test
+        add_test(
+            NAME functional_deep_directories
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_deep_directories.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_deep_directories PROPERTIES
+            TIMEOUT 120
+            LABELS "functional"
+        )
+
+        # Long filenames test
+        add_test(
+            NAME functional_long_filenames
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_long_filenames.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_long_filenames PROPERTIES
+            TIMEOUT 120
+            LABELS "functional"
+        )
+
+        # Special characters in filenames test
+        add_test(
+            NAME functional_special_chars
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_special_chars.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_special_chars PROPERTIES
+            TIMEOUT 120
+            LABELS "functional"
+        )
+
+        # Zstd compression test
+        add_test(
+            NAME functional_zstd_compression
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_zstd_compression.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_zstd_compression PROPERTIES
+            TIMEOUT 180
+            LABELS "functional"
+        )
+
+        # Block sizes test
+        add_test(
+            NAME functional_block_sizes
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_block_sizes.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_block_sizes PROPERTIES
+            TIMEOUT 180
+            LABELS "functional"
+        )
+
+        # Export table test
+        add_test(
+            NAME functional_export_table
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/functional/test_export_table.sh -f $<TARGET_FILE:squashfs-fuse>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(functional_export_table PROPERTIES
+            TIMEOUT 120
+            LABELS "functional"
+        )
+
         message(STATUS "Functional tests enabled")
     endif()
 
@@ -190,7 +301,7 @@ if(BUILD_TESTS)
     if(CMocka_FOUND)
         add_custom_target(test_unit
             COMMAND ${CMAKE_CTEST_COMMAND} -L unit --output-on-failure
-            DEPENDS test_cache test_compressor test_utils test_superblock test_inode test_directory test_fragment test_metadata
+            DEPENDS test_cache test_compressor test_utils test_superblock test_inode test_directory test_fragment test_metadata test_export
             COMMENT "Running unit tests"
         )
     endif()

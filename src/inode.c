@@ -33,7 +33,8 @@
 #define FRAGMENT_INVALID 0xFFFFFFFF
 
 /* Maximum inode size (for buffer allocation) */
-#define MAX_INODE_SIZE 512
+/* Large files can have many block sizes, e.g., 100MB file = 800 blocks = 3200+ bytes */
+#define MAX_INODE_SIZE 8192
 
 /* ============================================================================
  * Internal Helpers
@@ -459,18 +460,21 @@ uint32_t sqfs_calc_block_count(uint64_t file_size, uint32_t block_size,
                                bool has_fragment)
 {
     uint64_t full_blocks;
+    uint64_t remainder;
 
     if (file_size == 0) {
         return 0;
     }
 
     full_blocks = file_size / block_size;
+    remainder = file_size % block_size;
 
-    /* If there's a remainder and we have fragments, the remainder goes in fragment */
-    /* Otherwise, it's stored as a partial block */
-    if (!has_fragment && (file_size % block_size) != 0) {
-        /* Without fragments, partial block counts as a block */
-        /* But in SquashFS, fragments are typically used, so this is rare */
+    /*
+     * If there's a remainder and no fragment, the partial block counts as a block.
+     * With fragments, the remainder goes in a fragment block instead.
+     */
+    if (!has_fragment && remainder != 0) {
+        full_blocks++;
     }
 
     return (uint32_t)full_blocks;
