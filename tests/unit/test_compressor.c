@@ -60,11 +60,12 @@ static void test_compressor_zlib_decompress(void **state) {
 
     /*
      * Compressed data for "Hello, SquashFS!" using raw deflate
-     * Generated with: echo -n "Hello, SquashFS!" | zlib-flate -compress
+     * Generated with Python: zlib.compress(b'Hello, SquashFS!', 9)[2:-4]
      */
     const unsigned char compressed[] = {
-        0xf3, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x08, 0xcf,
-        0x2f, 0xca, 0x49, 0x51, 0x04, 0x00
+        0xf3, 0x48, 0xcd, 0xc9, 0xc9, 0xd7, 0x51, 0x08,
+        0x2e, 0x2c, 0x4d, 0x2c, 0xce, 0x70, 0x0b, 0x56,
+        0x04, 0x00
     };
     const char *expected = "Hello, SquashFS!";
 

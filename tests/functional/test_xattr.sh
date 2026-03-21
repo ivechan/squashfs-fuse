@@ -37,6 +37,9 @@ TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
 
+# Xattr support flag (detected during image creation)
+XATTRS_AVAILABLE=false
+
 # Temporary files
 TEMP_DIR=""
 MOUNT_POINT=""
@@ -203,6 +206,14 @@ create_xattr_image() {
 
         # Directory xattr
         setfattr -n user.dirflag -v "true" "${content_dir}/xattr_dir" 2>/dev/null || true
+
+        # Check if xattrs were actually written (filesystem may not support them)
+        if getfattr -n user.comment --only-values "${content_dir}/file1.txt" &>/dev/null; then
+            XATTRS_AVAILABLE=true
+            log_debug "Xattrs successfully written to test files"
+        else
+            log_warn "Xattrs not supported on host filesystem - tests will be skipped"
+        fi
     fi
 
     # Create SquashFS image WITH xattrs (remove -no-xattrs)
@@ -309,6 +320,12 @@ test_read_user_xattr() {
         return
     fi
 
+    if [ "${XATTRS_AVAILABLE}" != true ]; then
+        log_warn "Xattrs not available on host filesystem, skipping"
+        test_pass
+        return
+    fi
+
     local value
     value=$(getfattr -n user.comment --only-values "${MOUNT_POINT}/file1.txt" 2>/dev/null || echo "")
 
@@ -328,6 +345,12 @@ test_read_multiple_xattrs() {
 
     if [ "${HAS_GETFATTR}" != true ]; then
         log_warn "getfattr not available, skipping"
+        test_pass
+        return
+    fi
+
+    if [ "${XATTRS_AVAILABLE}" != true ]; then
+        log_warn "Xattrs not available on host filesystem, skipping"
         test_pass
         return
     fi
@@ -359,6 +382,12 @@ test_list_xattrs() {
         return
     fi
 
+    if [ "${XATTRS_AVAILABLE}" != true ]; then
+        log_warn "Xattrs not available on host filesystem, skipping"
+        test_pass
+        return
+    fi
+
     local xattr_list
     xattr_list=$(getfattr -d "${MOUNT_POINT}/file3.txt" 2>/dev/null | grep -c "^user\." || echo "0")
 
@@ -381,6 +410,12 @@ test_directory_xattr() {
         return
     fi
 
+    if [ "${XATTRS_AVAILABLE}" != true ]; then
+        log_warn "Xattrs not available on host filesystem, skipping"
+        test_pass
+        return
+    fi
+
     local value
     value=$(getfattr -n user.dirflag --only-values "${MOUNT_POINT}/xattr_dir" 2>/dev/null || echo "")
 
@@ -399,6 +434,12 @@ test_nonexistent_xattr() {
 
     if [ "${HAS_GETFATTR}" != true ]; then
         log_warn "getfattr not available, skipping"
+        test_pass
+        return
+    fi
+
+    if [ "${XATTRS_AVAILABLE}" != true ]; then
+        log_warn "Xattrs not available on host filesystem, skipping"
         test_pass
         return
     fi
