@@ -11,6 +11,8 @@
 #   -f, --fuse-binary PATH  Path to squashfs-fuse binary
 #   -v, --verbose           Enable verbose output
 #   --quick                 Run quick test (5 seconds each)
+#   --fuse-only             Only test FUSE implementation
+#   --kernel-only           Only test Kernel implementation
 #
 # Output: Markdown report comparing FUSE vs Kernel performance
 #
@@ -27,6 +29,8 @@ OUTPUT_FILE=""
 FUSE_BINARY=""
 TEST_IMAGE=""
 RUNTIME=30
+TEST_FUSE=true
+TEST_KERNEL=true
 
 # Colors
 RED='\033[0;31m'
@@ -69,10 +73,14 @@ Options:
   -f, --fuse-binary PATH  Path to squashfs-fuse binary
   -v, --verbose           Enable verbose output
   --quick                 Run quick test (5 seconds each)
+  --fuse-only             Only test FUSE implementation
+  --kernel-only           Only test Kernel implementation
 
 Examples:
-  $(basename "$0")                          # Run with defaults
+  $(basename "$0")                          # Run both FUSE and Kernel tests
   $(basename "$0") -o results.md            # Save results to file
+  $(basename "$0") --fuse-only              # Only test FUSE
+  $(basename "$0") --kernel-only            # Only test Kernel
   $(basename "$0") -i test.sqfs -o out.md   # Use specific image
 EOF
 }
@@ -104,6 +112,16 @@ parse_args() {
             --quick)
                 QUICK_MODE=true
                 RUNTIME=5
+                shift
+                ;;
+            --fuse-only)
+                TEST_FUSE=true
+                TEST_KERNEL=false
+                shift
+                ;;
+            --kernel-only)
+                TEST_FUSE=false
+                TEST_KERNEL=true
                 shift
                 ;;
             *)
@@ -622,37 +640,41 @@ main() {
     log_info "Running benchmarks..."
 
     # Test FUSE
-    log_info ""
-    log_info "=== Testing FUSE Implementation ==="
-    if mount_fuse; then
-        run_sequential_benchmark "${FUSE_MOUNT}" "true"
-        run_random_benchmark "${FUSE_MOUNT}" "true"
-        run_metadata_benchmark "${FUSE_MOUNT}" "true"
+    if [ "${TEST_FUSE}" = true ]; then
+        log_info ""
+        log_info "=== Testing FUSE Implementation ==="
+        if mount_fuse; then
+            run_sequential_benchmark "${FUSE_MOUNT}" "true"
+            run_random_benchmark "${FUSE_MOUNT}" "true"
+            run_metadata_benchmark "${FUSE_MOUNT}" "true"
 
-        for threads in 1 2 4 8; do
-            run_concurrent_benchmark "${FUSE_MOUNT}" "true" ${threads}
-        done
+            for threads in 1 2 4 8; do
+                run_concurrent_benchmark "${FUSE_MOUNT}" "true" ${threads}
+            done
 
-        unmount_fuse
-    else
-        log_error "Failed to mount FUSE"
+            unmount_fuse
+        else
+            log_error "Failed to mount FUSE"
+        fi
     fi
 
     # Test Kernel
-    log_info ""
-    log_info "=== Testing Kernel Implementation ==="
-    if mount_kernel; then
-        run_sequential_benchmark "${KERNEL_MOUNT}" "false"
-        run_random_benchmark "${KERNEL_MOUNT}" "false"
-        run_metadata_benchmark "${KERNEL_MOUNT}" "false"
+    if [ "${TEST_KERNEL}" = true ]; then
+        log_info ""
+        log_info "=== Testing Kernel Implementation ==="
+        if mount_kernel; then
+            run_sequential_benchmark "${KERNEL_MOUNT}" "false"
+            run_random_benchmark "${KERNEL_MOUNT}" "false"
+            run_metadata_benchmark "${KERNEL_MOUNT}" "false"
 
-        for threads in 1 2 4 8; do
-            run_concurrent_benchmark "${KERNEL_MOUNT}" "false" ${threads}
-        done
+            for threads in 1 2 4 8; do
+                run_concurrent_benchmark "${KERNEL_MOUNT}" "false" ${threads}
+            done
 
-        unmount_kernel
-    else
-        log_warn "Failed to mount Kernel squashfs (may need different permissions)"
+            unmount_kernel
+        else
+            log_warn "Failed to mount Kernel squashfs (may need different permissions)"
+        fi
     fi
 
     # Generate report

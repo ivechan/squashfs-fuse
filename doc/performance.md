@@ -76,18 +76,17 @@ cmake .. && make -j$(nproc)
 # 创建测试镜像
 ../scripts/create_perf_images.sh
 
-# 运行性能测试
+# 运行性能测试（默认测试 FUSE 和 Kernel）
 ../tests/performance/run_benchmark.sh -o results.md
-```
 
-### 详细测试
+# 仅测试 FUSE
+../tests/performance/run_benchmark.sh --fuse-only -o results.md
 
-```bash
-# 使用特定镜像
-./tests/performance/run_benchmark.sh -i tests/fixtures/perf/perf_zstd_bs128k.sqfs -o zstd_results.md
+# 仅测试 Kernel
+../tests/performance/run_benchmark.sh --kernel-only -o results.md
 
 # 快速模式 (5秒每测试)
-./tests/performance/run_benchmark.sh --quick -o quick_results.md
+../tests/performance/run_benchmark.sh --quick -o results.md
 ```
 
 ## 测试镜像准备
