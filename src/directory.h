@@ -69,6 +69,7 @@ typedef struct __attribute__((packed)) {
 typedef struct {
     char *name;                /* Null-terminated entry name (caller must free) */
     uint64_t inode_number;     /* Absolute inode number */
+    uint64_t inode_ref;        /* Inode reference (block_pos << 16 | offset) */
     sqfs_inode_type_t type;    /* Inode type */
 } sqfs_dirent_t;
 

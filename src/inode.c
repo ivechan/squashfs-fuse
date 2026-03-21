@@ -84,38 +84,6 @@ static int read_inode_metadata(sqfs_fuse_ctx_t *ctx, uint64_t ref,
 }
 
 /*
- * Get the size of an inode based on its type.
- */
-static size_t get_inode_size(sqfs_inode_type_t type)
-{
-    switch (type) {
-    case SQFS_INODE_DIR:
-        return sizeof(sqfs_inode_dir_t);
-    case SQFS_INODE_LDIR:
-        return sizeof(sqfs_inode_ldir_t);
-    case SQFS_INODE_FILE:
-        return sizeof(sqfs_inode_file_t);  /* + block_sizes */
-    case SQFS_INODE_LFILE:
-        return sizeof(sqfs_inode_lfile_t); /* + block_sizes */
-    case SQFS_INODE_SYMLINK:
-    case SQFS_INODE_LSYMLINK:
-        return sizeof(sqfs_inode_symlink_t) + 256; /* estimate */
-    case SQFS_INODE_BLKDEV:
-    case SQFS_INODE_LBLKDEV:
-    case SQFS_INODE_CHRDEV:
-    case SQFS_INODE_LCHRDEV:
-        return sizeof(sqfs_inode_dev_t);
-    case SQFS_INODE_FIFO:
-    case SQFS_INODE_LFIFO:
-    case SQFS_INODE_SOCKET:
-    case SQFS_INODE_LSOCKET:
-        return sizeof(sqfs_inode_ipc_t);
-    default:
-        return 0;
-    }
-}
-
-/*
  * Parse inode header from raw data.
  * All fields are little-endian.
  */
@@ -520,12 +488,13 @@ int sqfs_inode_get_by_ref(sqfs_fuse_ctx_t *ctx, uint64_t ref,
     uint8_t raw_inode[MAX_INODE_SIZE];
     sqfs_inode_header_t header;
     sqfs_inode_t *new_inode;
+    size_t inode_size;
 
     if (inode == NULL) {
         return SQFS_ERR_BAD_INODE;
     }
 
-    /* Read raw inode data */
+    /* Read raw inode data - just the header first */
     ret = read_inode_metadata(ctx, ref, raw_inode, sizeof(sqfs_inode_header_t));
     if (ret != SQFS_OK) {
         return ret;
@@ -539,9 +508,79 @@ int sqfs_inode_get_by_ref(sqfs_fuse_ctx_t *ctx, uint64_t ref,
         return SQFS_ERR_BAD_INODE;
     }
 
-    /* Get full inode size */
-    size_t inode_size = get_inode_size((sqfs_inode_type_t)header.type);
-    if (inode_size == 0) {
+    /* Calculate actual inode size based on type */
+    switch (header.type) {
+    case SQFS_INODE_DIR:
+        inode_size = sizeof(sqfs_inode_dir_t);
+        break;
+    case SQFS_INODE_LDIR:
+        inode_size = sizeof(sqfs_inode_ldir_t);
+        break;
+    case SQFS_INODE_FILE: {
+        /* For basic files, we need header + fixed part + block_sizes */
+        /* Read the fixed part first to get file_size */
+        ret = read_inode_metadata(ctx, ref, raw_inode, sizeof(sqfs_inode_header_t) + 16);
+        if (ret != SQFS_OK) {
+            return ret;
+        }
+        /* The file size is at offset 28 (after header) */
+        uint32_t file_size = sqfs_le32_to_cpu(raw_inode + 28);
+        uint32_t frag_idx = sqfs_le32_to_cpu(raw_inode + 20);
+        bool has_fragment = (frag_idx != FRAGMENT_INVALID);
+        uint32_t block_count = sqfs_calc_block_count(file_size, ctx->sb->disk.block_size, has_fragment);
+        inode_size = sizeof(sqfs_inode_header_t) + 16 + block_count * sizeof(uint32_t);
+        break;
+    }
+    case SQFS_INODE_LFILE: {
+        /* For extended files, we need header + fixed part + block_sizes */
+        ret = read_inode_metadata(ctx, ref, raw_inode, sizeof(sqfs_inode_header_t) + 40);
+        if (ret != SQFS_OK) {
+            return ret;
+        }
+        uint64_t file_size = sqfs_le64_to_cpu(raw_inode + 24);
+        uint32_t frag_idx = sqfs_le32_to_cpu(raw_inode + 44);
+        bool has_fragment = (frag_idx != FRAGMENT_INVALID);
+        uint32_t block_count = sqfs_calc_block_count(file_size, ctx->sb->disk.block_size, has_fragment);
+        inode_size = sizeof(sqfs_inode_header_t) + 40 + block_count * sizeof(uint32_t);
+        break;
+    }
+    case SQFS_INODE_SYMLINK: {
+        /* For basic symlinks, read the target_size first */
+        ret = read_inode_metadata(ctx, ref, raw_inode, sizeof(sqfs_inode_header_t) + 8);
+        if (ret != SQFS_OK) {
+            return ret;
+        }
+        uint32_t target_size = sqfs_le32_to_cpu(raw_inode + 20);  /* offset after header + link_count */
+        inode_size = sizeof(sqfs_inode_header_t) + 8 + target_size;
+        break;
+    }
+    case SQFS_INODE_LSYMLINK: {
+        /* For extended symlinks, read target_size and account for xattr_idx */
+        ret = read_inode_metadata(ctx, ref, raw_inode, sizeof(sqfs_inode_header_t) + 8);
+        if (ret != SQFS_OK) {
+            return ret;
+        }
+        uint32_t target_size = sqfs_le32_to_cpu(raw_inode + 20);
+        inode_size = sizeof(sqfs_inode_header_t) + 8 + target_size + 4;  /* +4 for xattr_idx */
+        break;
+    }
+    case SQFS_INODE_BLKDEV:
+    case SQFS_INODE_CHRDEV:
+        inode_size = sizeof(sqfs_inode_dev_t);
+        break;
+    case SQFS_INODE_LBLKDEV:
+    case SQFS_INODE_LCHRDEV:
+        inode_size = sizeof(sqfs_inode_ldev_t);
+        break;
+    case SQFS_INODE_FIFO:
+    case SQFS_INODE_SOCKET:
+        inode_size = sizeof(sqfs_inode_ipc_t);
+        break;
+    case SQFS_INODE_LFIFO:
+    case SQFS_INODE_LSOCKET:
+        inode_size = sizeof(sqfs_inode_lipc_t);
+        break;
+    default:
         return SQFS_ERR_BAD_INODE;
     }
 

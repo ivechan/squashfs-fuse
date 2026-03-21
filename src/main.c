@@ -232,14 +232,9 @@ static int resolve_path(sqfs_fuse_ctx_t *ctx, const char *path,
         /* Find matching entry */
         int found = 0;
         for (size_t i = 0; i < entry_count; i++) {
-            SQFS_LOG_DEBUG(SQFS_MOD_FUSE, "resolve_path: entry[%zu]='%s', inode=%lu",
-                           i, entries[i].name, (unsigned long)entries[i].inode_number);
             if (strcmp(entries[i].name, component) == 0) {
-                /* Load the inode for this entry */
-                SQFS_LOG_DEBUG(SQFS_MOD_FUSE, "resolve_path: calling sqfs_inode_load for inode %lu",
-                               (unsigned long)entries[i].inode_number);
-                ret = sqfs_inode_load(ctx, entries[i].inode_number, &inode);
-                SQFS_LOG_DEBUG(SQFS_MOD_FUSE, "resolve_path: sqfs_inode_load returned %d", ret);
+                /* Load the inode by reference (more reliable than export table lookup) */
+                ret = sqfs_inode_get_by_ref(ctx, entries[i].inode_ref, &inode);
                 if (ret == SQFS_OK) {
                     found = 1;
                 }

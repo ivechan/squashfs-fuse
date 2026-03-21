@@ -317,6 +317,10 @@ static int parse_directory_entries(const void *data, uint32_t size,
             dirent->inode_number = (uint64_t)((int64_t)(int32_t)header.inode_number +
                                                (int64_t)entry.inode_offset);
 
+            /* Calculate inode reference from header.start and entry.offset */
+            /* Reference format: (block_pos << 16) | offset */
+            dirent->inode_ref = ((uint64_t)header.start << 16) | entry.offset;
+
             /* Map basic type to inode type enum */
             dirent->type = (sqfs_inode_type_t)entry.type;
 
