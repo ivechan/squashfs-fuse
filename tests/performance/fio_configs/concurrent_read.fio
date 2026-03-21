@@ -1,0 +1,35 @@
+; concurrent_read.fio - Concurrent read performance test
+;
+; Tests random read performance with multiple threads
+
+[global]
+ioengine=sync
+direct=1
+time_based
+runtime=30
+group_reporting
+filename=large_100m.bin
+
+[randread-1thread]
+rw=randread
+bs=4K
+numjobs=1
+iodepth=1
+
+[randread-2thread]
+rw=randread
+bs=4K
+numjobs=2
+iodepth=1
+
+[randread-4thread]
+rw=randread
+bs=4K
+numjobs=4
+iodepth=1
+
+[randread-8thread]
+rw=randread
+bs=4K
+numjobs=8
+iodepth=1

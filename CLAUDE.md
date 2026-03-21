@@ -34,6 +34,9 @@ sudo apt install libcmocka-dev
 
 # 安装其他测试依赖
 sudo apt install squashfs-tools attr
+
+# 安装性能测试依赖
+sudo apt install fio bc
 ```
 
 ### 运行测试
@@ -51,10 +54,28 @@ make test_unit
 # 只运行功能测试
 make test_functional
 
+# 运行性能测试
+make test_performance
+
 # 使用 CTest
 ctest -V                    # 详细输出
 ctest -L functional         # 只运行功能测试
 ```
+
+### 性能测试
+
+```bash
+# 创建测试镜像
+./scripts/create_perf_images.sh
+
+# 运行性能测试
+./tests/performance/run_benchmark.sh -o results.md
+
+# 快速测试模式 (5秒每测试)
+./tests/performance/run_benchmark.sh --quick -o results.md
+```
+
+性能测试详细文档见 `doc/performance.md`。
 
 ### 测试列表
 
@@ -67,6 +88,7 @@ ctest -L functional         # 只运行功能测试
 | functional_xattr | 功能 | 扩展属性测试 |
 | functional_error_paths | 功能 | 错误处理测试 |
 | python_read | 功能 | 文件读取测试 |
+| test_performance | 性能 | FUSE vs Kernel 性能对比 |
 
 ### 手动测试
 
@@ -157,6 +179,7 @@ SquashFS 对导出表、碎片表和 ID 表使用两级查找表：
 - **构建测试**: 每次 push 和 PR 自动运行
 - **调试构建**: 验证 debug 日志编译
 - **代码风格**: 检查制表符和尾随空格
+- **性能测试**: 快速性能基准测试，结果保存为 artifact
 
 本地验证：
 
@@ -173,6 +196,7 @@ make test
 |------|------|
 | `doc/design.md` | 架构设计、数据结构、缓存设计、错误码 |
 | `doc/plan.md` | 实现计划和进度追踪 |
+| `doc/performance.md` | 性能测试方案和基准测试 |
 | `doc/debug.md` | 调试方法和常见问题 |
 | `doc/logging.md` | 日志系统配置 |
 | `CONTRIBUTING.md` | 贡献指南、代码风格、提交规范 |

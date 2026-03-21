@@ -1,0 +1,31 @@
+; random_read.fio - Random read performance test
+;
+; Tests random read IOPS with different block sizes
+
+[global]
+ioengine=sync
+direct=1
+time_based
+runtime=30
+group_reporting
+
+[random-read-4k]
+filename=large_100m.bin
+rw=randread
+bs=4K
+size=100M
+iodepth=1
+
+[random-read-64k]
+filename=large_100m.bin
+rw=randread
+bs=64K
+size=100M
+iodepth=1
+
+[random-read-1m]
+filename=large_100m.bin
+rw=randread
+bs=1M
+size=100M
+iodepth=1
