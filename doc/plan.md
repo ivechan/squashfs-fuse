@@ -3,6 +3,8 @@
 > **所有 Agent 必须遵循 `doc/design.md` 中的设计规范**
 >
 > **维测日志系统设计见 `doc/logging.md`**
+>
+> **问题定位与调试经验见 `doc/debug.md`**
 
 ## 设计决策 (已确认)
 
