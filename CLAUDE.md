@@ -26,16 +26,51 @@ make -j$(nproc)
 
 ## 测试命令
 
+### 安装测试依赖
+
 ```bash
-# 运行功能测试
-./tests/functional/test_basic.sh
+# 安装 CMocka (单元测试)
+sudo apt install libcmocka-dev
 
-# 详细输出模式
-./tests/functional/test_basic.sh -v
+# 安装其他测试依赖
+sudo apt install squashfs-tools attr
+```
 
-# 指定二进制文件
-./tests/functional/test_basic.sh -f ./build/squashfs-fuse
+### 运行测试
 
+```bash
+# 运行所有测试 (单元测试 + 功能测试)
+make test
+
+# 详细输出
+make test_verbose
+
+# 只运行单元测试
+make test_unit
+
+# 只运行功能测试
+make test_functional
+
+# 使用 CTest
+ctest -V                    # 详细输出
+ctest -L functional         # 只运行功能测试
+```
+
+### 测试列表
+
+| 测试名称 | 类型 | 说明 |
+|---------|------|------|
+| test_cache | 单元 | LRU 缓存测试 |
+| test_compressor | 单元 | 压缩器测试 |
+| test_utils | 单元 | 工具函数测试 |
+| functional_basic | 功能 | 基本功能测试 |
+| functional_xattr | 功能 | 扩展属性测试 |
+| functional_error_paths | 功能 | 错误处理测试 |
+| python_read | 功能 | 文件读取测试 |
+
+### 手动测试
+
+```bash
 # 手动挂载测试
 ./build/squashfs-fuse tests/fixtures/basic.sqfs /mnt/test -f
 ls -la /mnt/test

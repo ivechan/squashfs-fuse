@@ -14,21 +14,37 @@
 
 ## 依赖项
 
+### 运行时依赖
+
 - FUSE 3.x
 - zlib (gzip 压缩支持)
 - zstd (zstd 压缩支持)
 - CMake 3.10+
 
+### 开发依赖 (可选，用于测试)
+
+- libcmocka-dev (单元测试)
+- squashfs-tools (创建测试镜像)
+- attr (xattr 测试)
+
 ### Ubuntu/Debian
 
 ```bash
+# 运行时依赖
 sudo apt install libfuse3-dev libzstd-dev zlib1g-dev cmake gcc
+
+# 开发依赖 (测试)
+sudo apt install libcmocka-dev squashfs-tools attr
 ```
 
 ### Fedora
 
 ```bash
+# 运行时依赖
 sudo dnf install fuse3-devel libzstd-devel zlib-devel cmake gcc
+
+# 开发依赖 (测试)
+sudo dnf install libcmocka-devel squashfs-tools attr
 ```
 
 ## 编译
@@ -104,16 +120,38 @@ unsquashfs -l test.sqfs
 
 ## 测试
 
+### 安装测试依赖
+
 ```bash
-# 运行功能测试
-./tests/functional/test_basic.sh
+sudo apt install libcmocka-dev squashfs-tools attr
+```
+
+### 运行测试
+
+```bash
+# 运行所有测试
+make test
 
 # 详细输出
-./tests/functional/test_basic.sh -v
+make test_verbose
 
-# 指定二进制文件
-./tests/functional/test_basic.sh -f ./build/squashfs-fuse
+# 只运行单元测试
+make test_unit
+
+# 只运行功能测试
+make test_functional
+
+# 使用 CTest
+ctest -V
 ```
+
+### 测试类型
+
+| 类型 | 说明 |
+|------|------|
+| 单元测试 | 基于 CMocka，测试 cache、compressor、utils 模块 |
+| 功能测试 | Bash 脚本，测试基本功能、xattr、错误处理 |
+| Python 测试 | 文件读取测试（顺序、随机、并发） |
 
 ## 项目结构
 
@@ -139,8 +177,9 @@ squashfs-fuse/
 │   ├── debug.md        # 调试指南
 │   └── logging.md      # 日志系统设计
 ├── tests/
-│   ├── fixtures/       # 测试镜像
-│   └── functional/     # 功能测试
+│   ├── unit/           # 单元测试 (CMocka)
+│   ├── functional/     # 功能测试脚本
+│   └── fixtures/       # 测试镜像
 └── CMakeLists.txt
 ```
 
