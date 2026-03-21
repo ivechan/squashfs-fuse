@@ -1,0 +1,116 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfuse3-dev \
+            libzstd-dev \
+            zlib1g-dev \
+            cmake \
+            gcc \
+            squashfs-tools \
+            python3 \
+            attr \
+            libcmocka-dev
+
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cd build
+          cmake ..
+
+      - name: Build
+        run: |
+          cd build
+          make -j$(nproc)
+
+      - name: Run unit tests
+        run: |
+          cd build
+          ctest --output-on-failure
+
+      - name: Run functional tests
+        run: |
+          cd build
+          ../tests/functional/test_basic.sh -f $(pwd)/squashfs-fuse -v
+
+      - name: Run Python read tests
+        run: |
+          cd build
+          python3 ../tests/functional/test_read.py -f $(pwd)/squashfs-fuse -v
+
+      - name: Run xattr tests
+        run: |
+          cd build
+          ../tests/functional/test_xattr.sh -f $(pwd)/squashfs-fuse -v
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: squashfs-fuse-binary
+          path: build/squashfs-fuse
+          retention-days: 7
+
+  build-debug:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfuse3-dev \
+            libzstd-dev \
+            zlib1g-dev \
+            cmake \
+            gcc
+
+      - name: Configure CMake with debug logging
+        run: |
+          mkdir -p build
+          cd build
+          cmake -DSQFS_ENABLE_DEBUG_LOG=ON ..
+
+      - name: Build
+        run: |
+          cd build
+          make -j$(nproc)
+
+  code-style:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check code style
+        run: |
+          # Check for tabs instead of spaces (optional)
+          if grep -rn $'\t' src/ --include="*.c" --include="*.h"; then
+            echo "Warning: Found tabs in source files"
+          fi
+
+          # Check for trailing whitespace
+          if grep -rn '[[:space:]]$' src/ --include="*.c" --include="*.h"; then
+            echo "Warning: Found trailing whitespace in source files"
+          fi
+
+          echo "Code style check completed"

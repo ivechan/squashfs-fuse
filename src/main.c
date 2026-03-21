@@ -929,14 +929,6 @@ int main(int argc, char *argv[]) {
     int i;
     char *mount_point = NULL;
 
-    /* Debug: print all incoming args */
-    fprintf(stderr, "=== MAIN START ===\n");
-    fprintf(stderr, "argc=%d\n", argc);
-    for (i = 0; i < argc; i++) {
-        fprintf(stderr, "  argv[%d] = '%s'\n", i, argv[i]);
-    }
-    fflush(stderr);
-
     /* Initialize logging early */
     sqfs_log_config_t log_config = {
         .path = NULL,
@@ -1056,14 +1048,6 @@ int main(int argc, char *argv[]) {
     printf("Inodes: %u\n", g_ctx.sb->disk.inode_count);
     printf("Press Ctrl+C to unmount\n\n");
     fflush(stdout);
-
-    /* Debug: print args */
-    fprintf(stderr, "DEBUG: args.argc=%d\n", args.argc);
-    for (int j = 0; j < args.argc; j++) {
-        fprintf(stderr, "DEBUG: args.argv[%d] = '%s'\n", j, args.argv[j]);
-    }
-    fprintf(stderr, "\n");
-    fflush(stderr);
 
     /* Run FUSE */
     ret = fuse_main(args.argc, args.argv, &sqfs_oper, NULL);

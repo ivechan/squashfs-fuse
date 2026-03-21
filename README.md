@@ -1,5 +1,7 @@
 # SquashFS-FUSE
 
+[![Build and Test](https://github.com/ivechan/squashfs-fuse/actions/workflows/build.yml/badge.svg)](https://github.com/ivechan/squashfs-fuse/actions/workflows/build.yml)
+
 一个用于挂载 SquashFS 压缩只读文件系统的 FUSE 3.x 驱动程序。
 
 ## 功能特性
