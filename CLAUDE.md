@@ -110,6 +110,8 @@ Inode 管理器 (src/inode.c) ── 路径解析、inode 解析/缓存
         │
         ▼
 超级块和文件句柄 (src/superblock.c, src/main.c)
+日志系统 (src/log.c) ── 结构化 JSON 日志
+统计系统 (src/stats.c) ── 性能指标追踪
 ```
 
 ## 关键数据结构
@@ -148,6 +150,23 @@ SquashFS 对导出表、碎片表和 ID 表使用两级查找表：
 
 3. **格式问题参考 `doc/squashfs.adoc`** - SquashFS 二进制格式规范是权威来源。
 
+## CI/CD
+
+项目使用 GitHub Actions 进行持续集成：
+
+- **构建测试**: 每次 push 和 PR 自动运行
+- **调试构建**: 验证 debug 日志编译
+- **代码风格**: 检查制表符和尾随空格
+
+本地验证：
+
+```bash
+# 运行与 CI 相同的测试
+mkdir -p build && cd build
+cmake .. && make -j$(nproc)
+make test
+```
+
 ## 文档索引
 
 | 文件 | 用途 |
@@ -156,3 +175,4 @@ SquashFS 对导出表、碎片表和 ID 表使用两级查找表：
 | `doc/plan.md` | 实现计划和进度追踪 |
 | `doc/debug.md` | 调试方法和常见问题 |
 | `doc/logging.md` | 日志系统配置 |
+| `CONTRIBUTING.md` | 贡献指南、代码风格、提交规范 |
