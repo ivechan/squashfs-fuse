@@ -93,6 +93,7 @@ if(BUILD_TESTS)
             src/inode.c
             src/directory.c
             src/fragment.c
+            src/data.c
         )
 
         # Include directories for tests

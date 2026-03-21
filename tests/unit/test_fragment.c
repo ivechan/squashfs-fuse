@@ -224,8 +224,6 @@ static void test_frag_two_level_lookup(void **state) {
      * 2. Metadata blocks: contain actual fragment entries
      */
 
-    uint32_t frag_count = 1000;
-    uint32_t blocks_needed = sqfs_fragment_table_blocks(frag_count);
     uint32_t entries_per_block = 512;
 
     /* Calculate block index for a given fragment index */

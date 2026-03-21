@@ -10,6 +10,7 @@
 #include <cmocka.h>
 
 #include "inode.h"
+#include "fragment.h"
 #include "utils.h"
 #include <string.h>
 
@@ -302,14 +303,14 @@ static void test_inode_dev_number(void **state) {
     /* major = (dev & 0xFFF00) >> 8 */
     /* minor = (dev & 0x000FF) | ((dev >> 12) & 0xFFF00) */
 
-    uint32_t dev = 0x00012345;  /* major=0x123, minor=0x345 */
+    uint32_t dev = 0x00012345;  /* major=0x123, minor=0x45 */
 
     uint32_t major = sqfs_dev_major(dev);
     uint32_t minor = sqfs_dev_minor(dev);
 
     /* Verify extraction */
     assert_int_equal(major, 0x123);
-    assert_int_equal(minor, 0x345);
+    assert_int_equal(minor, 0x45);
 }
 
 /* Test: Device number encoding complex */
@@ -317,16 +318,18 @@ static void test_inode_dev_number_complex(void **state) {
     (void)state;
 
     /* Test with large minor number (> 255) */
-    /* minor = 0x1000, major = 0x01 */
-    /* Encoded: (major << 8) | (minor & 0xFF) | ((minor & 0xFFF00) << 12) */
-    /*        = 0x100 | 0x00 | 0x10000000 = 0x10000100 */
+    /* For dev = 0x10000100:
+     * major = (0x10000100 & 0xFFF00) >> 8 = 0x100 >> 8 = 0x01
+     * minor = (0x10000100 & 0x000FF) | ((0x10000100 >> 12) & 0xFFF00)
+     *       = 0x00 | (0x10000 & 0xFFF00) = 0x00 | 0x10000 = 0x10000
+     */
     uint32_t dev = 0x10000100;
 
     uint32_t major = sqfs_dev_major(dev);
     uint32_t minor = sqfs_dev_minor(dev);
 
     assert_int_equal(major, 0x01);
-    assert_int_equal(minor, 0x1000);
+    assert_int_equal(minor, 0x10000);
 }
 
 /* ============================================================================

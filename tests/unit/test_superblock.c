@@ -28,8 +28,9 @@ static void test_sb_magic_value(void **state) {
     assert_int_equal(SQUASHFS_MAGIC, 0x73717368);
 
     /* Verify the bytes spell "hsqs" */
+    uint32_t magic = SQUASHFS_MAGIC;
     uint8_t bytes[4];
-    memcpy(bytes, &SQUASHFS_MAGIC, 4);
+    memcpy(bytes, &magic, 4);
     assert_int_equal(bytes[0], 'h');
     assert_int_equal(bytes[1], 's');
     assert_int_equal(bytes[2], 'q');
@@ -195,9 +196,6 @@ static void test_sb_size(void **state) {
 /* Test: Superblock field offsets */
 static void test_sb_field_offsets(void **state) {
     (void)state;
-
-    squashfs_superblock_t sb;
-    uint8_t *base = (uint8_t *)&sb;
 
     /* Verify field offsets match spec */
     assert_int_equal(offsetof(squashfs_superblock_t, magic),        0);

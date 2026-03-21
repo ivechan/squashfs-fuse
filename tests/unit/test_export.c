@@ -11,6 +11,7 @@
 
 #include "utils.h"
 #include "inode.h"
+#include "superblock.h"
 #include <string.h>
 
 /* ============================================================================
@@ -58,12 +59,13 @@ static void test_export_root_inode(void **state) {
     (void)state;
 
     /* Root inode reference is stored in superblock.root_inode */
-    uint64_t root_ref = 0x0000000100000000ULL;  /* Example: block 1, offset 0 */
+    /* ref = (block_pos << 16) | offset */
+    uint64_t root_ref = 0x0000000100000000ULL;  /* block_pos=0x10000, offset=0 */
 
     uint64_t block_pos = sqfs_meta_block_pos(root_ref);
     uint16_t offset = sqfs_meta_block_offset(root_ref);
 
-    assert_int_equal(block_pos, 1);
+    assert_int_equal(block_pos, 0x10000ULL);
     assert_int_equal(offset, 0);
 }
 
@@ -71,7 +73,7 @@ static void test_export_root_inode(void **state) {
 static void test_export_ref_extraction(void **state) {
     (void)state;
 
-    /* Reference format: upper 48 bits = block position, lower 16 bits = offset */
+    /* Reference format: block_pos = ref >> 16, offset = ref & 0xFFFF */
     struct {
         uint64_t ref;
         uint64_t expected_pos;
@@ -80,7 +82,7 @@ static void test_export_ref_extraction(void **state) {
         { 0x0000000000000000ULL, 0, 0 },
         { 0x0000000000000001ULL, 0, 1 },
         { 0x0000000000010000ULL, 1, 0 },
-        { 0x0000000100023456ULL, 0x100002, 0x3456 },
+        { 0x0000000100023456ULL, 0x10002, 0x3456 },
         { 0xFFFFFFFFFFFF0000ULL, 0xFFFFFFFFFFFFULL, 0 },
         { 0x000000000000FFFFULL, 0, 0xFFFF },
     };
@@ -207,7 +209,7 @@ static void test_export_two_level_lookup(void **state) {
     uint32_t entry_offset = (index % 1024) * sizeof(uint64_t);
 
     assert_int_equal(block_idx, 1);         /* Second lookup table entry */
-    assert_int_equal(entry_offset, 976 * 8); /* Byte offset in metadata block */
+    assert_int_equal(entry_offset, 975 * 8); /* Byte offset in metadata block */
 }
 
 /* ============================================================================
@@ -231,8 +233,6 @@ static void test_export_lookup_entry(void **state) {
     (void)state;
 
     /* Each lookup table entry is an absolute disk position */
-    uint64_t metadata_block_pos = 0x100000;  /* Example position */
-
     /* The entry points directly to the metadata block header */
     /* When reading: read 16-bit header, then read/expand the block */
 }

@@ -49,15 +49,15 @@ static void test_meta_ref_encoding(void **state) {
 static void test_meta_ref_position(void **state) {
     (void)state;
 
-    /* High 48 bits are block position */
+    /* High 48 bits are block position, extracted via ref >> 16 */
     uint64_t ref = 0xABCD123400000000ULL;
     uint64_t pos = sqfs_meta_block_pos(ref);
-    assert_int_equal(pos, 0xABCD1234ULL);
+    assert_int_equal(pos, 0xABCD12340000ULL);
 
     /* Position is relative to table start, not file start */
     ref = 0x0000000100000000ULL;
     pos = sqfs_meta_block_pos(ref);
-    assert_int_equal(pos, 1);
+    assert_int_equal(pos, 0x10000ULL);
 }
 
 /* Test: Metadata reference offset extraction */
@@ -89,9 +89,9 @@ static void test_meta_ref_edge_cases(void **state) {
     assert_int_equal(sqfs_meta_block_pos(ref), 0);
     assert_int_equal(sqfs_meta_block_offset(ref), 0);
 
-    /* Maximum position (48 bits) */
+    /* Maximum position (48 bits) - ref >> 16 gives 48-bit result */
     ref = 0xFFFFFFFF00000000ULL;
-    assert_int_equal(sqfs_meta_block_pos(ref), 0xFFFFFFFFULL);
+    assert_int_equal(sqfs_meta_block_pos(ref), 0xFFFFFFFF0000ULL);
 
     /* Maximum offset (16 bits) */
     ref = 0x000000000000FFFFULL;

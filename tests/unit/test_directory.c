@@ -12,6 +12,7 @@
 #include "directory.h"
 #include "inode.h"
 #include "utils.h"
+#include <stdlib.h>
 #include <string.h>
 
 /* ============================================================================
