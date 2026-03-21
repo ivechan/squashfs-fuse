@@ -74,6 +74,11 @@ if(BUILD_TESTS)
             tests/unit/test_cache.c
             tests/unit/test_compressor.c
             tests/unit/test_utils.c
+            tests/unit/test_superblock.c
+            tests/unit/test_inode.c
+            tests/unit/test_directory.c
+            tests/unit/test_fragment.c
+            tests/unit/test_metadata.c
         )
 
         # Common sources for tests (exclude main.c)
@@ -84,6 +89,9 @@ if(BUILD_TESTS)
             src/superblock.c
             src/log.c
             src/stats.c
+            src/inode.c
+            src/directory.c
+            src/fragment.c
         )
 
         # Include directories for tests
@@ -100,11 +108,12 @@ if(BUILD_TESTS)
             add_executable(${TEST_NAME} ${TEST_SOURCE} ${TEST_LIB_SOURCES})
 
             target_include_directories(${TEST_NAME} PRIVATE ${TEST_INCLUDE_DIRS})
-            target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} ${ZLIB_LIBRARIES} ${ZSTD_LIBRARIES})
+            target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} ${ZLIB_LIBRARIES} ${ZSTD_LIBRARIES} m)
             target_include_directories(${TEST_NAME} PRIVATE ${CMOCKA_INCLUDE_DIRS})
 
-            # Add unit test
+            # Add unit test with label
             add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+            set_tests_properties(${TEST_NAME} PROPERTIES LABELS "unit")
         endforeach()
 
         message(STATUS "Unit tests enabled (CMocka found)")
@@ -181,7 +190,7 @@ if(BUILD_TESTS)
     if(CMocka_FOUND)
         add_custom_target(test_unit
             COMMAND ${CMAKE_CTEST_COMMAND} -L unit --output-on-failure
-            DEPENDS test_cache test_compressor test_utils
+            DEPENDS test_cache test_compressor test_utils test_superblock test_inode test_directory test_fragment test_metadata
             COMMENT "Running unit tests"
         )
     endif()
@@ -191,5 +200,13 @@ if(BUILD_TESTS)
         COMMAND ${CMAKE_CTEST_COMMAND} -L functional --output-on-failure
         DEPENDS squashfs-fuse
         COMMENT "Running functional tests"
+    )
+
+    # Custom target for running performance benchmarks
+    add_custom_target(test_performance
+        COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tests/performance/run_benchmark.sh
+        DEPENDS squashfs-fuse
+        COMMENT "Running performance benchmarks"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
 endif()
