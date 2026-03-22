@@ -11,6 +11,7 @@
 - **线程安全**: 所有共享数据结构必须支持多线程并发访问
 - **流式处理**: 大文件读取不一次性加载到内存
 - **缓存友好**: 多层缓存设计，LRU 淘汰策略
+- **VFS 抽象**: 核心逻辑与 VFS 实现解耦，支持多后端
 
 ### 1.2 技术约束
 
@@ -26,54 +27,295 @@
 
 ## 2. 模块架构
 
+### 2.1 整体架构图
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      FUSE Operations                        │
-│  getattr | readdir | open | read | readlink | statfs       │
-│  getxattr | listxattr                                       │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Inode Manager                           │
-│  解析 Inode | 缓存 Inode | 路径解析                          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          ▼                   ▼                   ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ Directory Table │ │   Data Layer    │ │  Xattr Table    │
-│   解析目录项     │ │ 数据块+Fragment │ │   扩展属性      │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
-          │                   │                   │
-          └───────────────────┼───────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Metadata Block Reader                     │
-│  读取 + 解压元数据块 (8 KiB chunks)                          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Compressor Layer                          │
-│          zlib (deflate)  |  zstd                            │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Superblock & Archive                      │
-│  Superblock 解析 | 文件句柄管理 | 基础信息                    │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Application Layer                              │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐         │
+│  │   FUSE Backend  │  │ Kernel Backend  │  │  Other Backend  │         │
+│  │  (src/fuse/)    │  │ (src/kernel/)   │  │    (Future)     │         │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘         │
+└───────────┼────────────────────┼────────────────────┼───────────────────┘
+            │                    │                    │
+            └────────────────────┼────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        VFS Abstraction Layer                             │
+│                            (src/vfs/)                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  sqfs_vfs_attr_t  │  sqfs_vfs_dirent_t  │  sqfs_vfs_fh_t        │   │
+│  │  sqfs_vfs_ops_t   │  sqfs_vfs_statfs_t  │                       │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│  Operations: getattr | open | read | readdir | readlink | statfs       │
+│              getxattr | listxattr | release                            │
+└─────────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Core Library (src/core/)                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                      Inode Manager                               │   │
+│  │  解析 Inode | 缓存 Inode | 路径解析                              │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                 │                                        │
+│           ┌─────────────────────┼─────────────────────┐                 │
+│           ▼                     ▼                     ▼                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐         │
+│  │ Directory Table │  │   Data Layer    │  │  Xattr Table    │         │
+│  │   解析目录项     │  │ 数据块+Fragment │  │   扩展属性      │         │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘         │
+│           │                     │                     │                 │
+│           └─────────────────────┼─────────────────────┘                 │
+│                                 ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    Metadata Block Reader                          │   │
+│  │  读取 + 解压元数据块 (8 KiB chunks)                              │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                 │                                        │
+│                                 ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    Compressor Layer                               │   │
+│  │          zlib (deflate)  |  zstd                                  │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                 │                                        │
+│                                 ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    Superblock & Archive                           │   │
+│  │  Superblock 解析 | 文件句柄管理 | 基础信息                        │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                           │
+│  Caches: inode_cache | dir_cache | meta_cache | data_cache              │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 目录结构
+
+```
+src/
+├── core/                    # 核心库 (VFS 无关)
+│   ├── context.h            # sqfs_ctx_t 上下文结构
+│   ├── superblock.c/h       # 超级块解析
+│   ├── inode.c/h            # Inode 解析与管理
+│   ├── directory.c/h        # 目录表解析
+│   ├── data.c/h             # 数据块读取
+│   ├── fragment.c/h         # 碎片表处理
+│   ├── xattr.c/h            # 扩展属性
+│   ├── compressor.c/h       # 压缩/解压
+│   ├── cache.c/h            # LRU 缓存
+│   ├── utils.c/h            # 工具函数
+│   ├── log.c/h              # 日志系统
+│   └── stats.c/h            # 统计系统
+│
+├── vfs/                     # VFS 抽象层
+│   ├── vfs.h                # VFS 接口定义
+│   └── vfs_ops.c            # VFS 操作实现
+│
+├── fuse/                    # FUSE 后端
+│   ├── fuse_main.c          # FUSE 主程序入口
+│   └── vfs_fuse.c           # FUSE VFS 适配器
+│
+└── kernel/                  # 内核模块框架 (未来)
+    └── vfs_kernel.c         # Linux VFS 适配器骨架
 ```
 
 ---
 
-## 3. 核心数据结构
+## 3. VFS 抽象层
 
-### 3.1 Superblock (96 字节)
+### 3.1 设计目标
+
+VFS 抽象层将 SquashFS 核心逻辑与具体的 VFS 实现分离，支持:
+
+- **FUSE 用户态文件系统**: 当前主要实现
+- **Linux 内核模块**: 未来扩展
+- **其他后端**: 如库形式嵌入其他程序
+
+### 3.2 VFS 数据结构
 
 ```c
-// src/superblock.h
+// src/vfs/vfs.h
+
+// VFS 操作结果码
+typedef enum {
+    SQFS_VFS_OK              = 0,
+    SQFS_VFS_ERR_NOT_FOUND   = -ENOENT,
+    SQFS_VFS_ERR_NOT_DIR     = -ENOTDIR,
+    SQFS_VFS_ERR_IS_DIR      = -EISDIR,
+    SQFS_VFS_ERR_ROFS        = -EROFS,
+    SQFS_VFS_ERR_NOMEM       = -ENOMEM,
+    SQFS_VFS_ERR_INVAL       = -EINVAL,
+    SQFS_VFS_ERR_IO          = -EIO,
+    SQFS_VFS_ERR_NOSUP       = -EOPNOTSUPP,
+    SQFS_VFS_ERR_NODATA      = -ENODATA,
+} sqfs_vfs_result_t;
+
+// VFS 文件属性 (VFS 无关)
+typedef struct {
+    uint64_t    ino;            // Inode 号
+    uint32_t    mode;           // 文件类型 + 权限
+    uint32_t    nlink;          // 硬链接数
+    uint32_t    uid;            // 用户 ID
+    uint32_t    gid;            // 组 ID
+    uint64_t    size;           // 文件大小
+    uint64_t    blocks;         // 512 字节块数
+    uint32_t    blksize;        // I/O 块大小
+    uint64_t    atime;          // 访问时间
+    uint64_t    mtime;          // 修改时间
+    uint64_t    ctime;          // 变更时间
+    uint32_t    rdev_major;     // 设备主号
+    uint32_t    rdev_minor;     // 设备次号
+} sqfs_vfs_attr_t;
+
+// VFS 目录项
+typedef struct {
+    char           *name;       // 名称 (需释放)
+    uint64_t        ino;        // Inode 号
+    uint32_t        type;       // 文件类型 (S_IFDIR, S_IFREG 等)
+} sqfs_vfs_dirent_t;
+
+// VFS 文件句柄
+typedef struct sqfs_vfs_fh {
+    void           *inode;      // 内部 inode 指针
+    uint64_t        file_size;  // 文件大小
+} sqfs_vfs_fh_t;
+
+// VFS 文件系统统计
+typedef struct {
+    uint64_t    bsize;          // 块大小
+    uint64_t    frsize;         // 片段大小
+    uint64_t    blocks;         // 总块数
+    uint64_t    bfree;          // 空闲块数
+    uint64_t    bavail;         // 可用块数
+    uint64_t    files;          // 总 inode 数
+    uint64_t    ffree;          // 空闲 inode 数
+    uint32_t    flags;          // 挂载标志
+    uint32_t    namemax;        // 最大文件名长度
+} sqfs_vfs_statfs_t;
+```
+
+### 3.3 VFS 操作接口
+
+```c
+// src/vfs/vfs.h
+
+// VFS 操作函数指针表
+typedef struct sqfs_vfs_ops {
+    // 生命周期
+    int  (*init)(sqfs_ctx_t *ctx);
+    void (*destroy)(sqfs_ctx_t *ctx);
+
+    // 文件操作
+    int  (*getattr)(sqfs_ctx_t *ctx, const char *path, sqfs_vfs_attr_t *attr);
+    int  (*open)(sqfs_ctx_t *ctx, const char *path, sqfs_vfs_fh_t **fh);
+    int  (*read)(sqfs_ctx_t *ctx, sqfs_vfs_fh_t *fh, void *buf,
+                 size_t size, uint64_t offset);
+    void (*release)(sqfs_ctx_t *ctx, sqfs_vfs_fh_t *fh);
+
+    // 目录操作
+    int  (*readdir)(sqfs_ctx_t *ctx, const char *path,
+                    sqfs_vfs_dirent_t **entries, size_t *count);
+
+    // 符号链接
+    int  (*readlink)(sqfs_ctx_t *ctx, const char *path, char *buf, size_t size);
+
+    // 文件系统信息
+    int  (*statfs)(sqfs_ctx_t *ctx, sqfs_vfs_statfs_t *stat);
+
+    // 扩展属性
+    int  (*getxattr)(sqfs_ctx_t *ctx, const char *path, const char *name,
+                     void *value, size_t size);
+    int  (*listxattr)(sqfs_ctx_t *ctx, const char *path,
+                      char *list, size_t size);
+} sqfs_vfs_ops_t;
+```
+
+### 3.4 VFS 操作实现
+
+```c
+// src/vfs/vfs_ops.c
+
+// 路径解析 (核心函数)
+int sqfs_vfs_resolve_path(sqfs_ctx_t *ctx, const char *path,
+                          sqfs_inode_t **out_inode);
+
+// 填充文件属性
+int sqfs_vfs_fill_attr(sqfs_ctx_t *ctx, sqfs_inode_t *inode,
+                       sqfs_vfs_attr_t *attr);
+
+// 获取文件属性
+int sqfs_vfs_getattr(sqfs_ctx_t *ctx, const char *path,
+                     sqfs_vfs_attr_t *attr);
+
+// 打开文件
+int sqfs_vfs_open(sqfs_ctx_t *ctx, const char *path, sqfs_vfs_fh_t **fh);
+
+// 读取文件
+int sqfs_vfs_read(sqfs_ctx_t *ctx, sqfs_vfs_fh_t *fh,
+                  void *buf, size_t size, uint64_t offset);
+
+// 关闭文件
+void sqfs_vfs_release(sqfs_ctx_t *ctx, sqfs_vfs_fh_t *fh);
+
+// 读取目录
+int sqfs_vfs_readdir(sqfs_ctx_t *ctx, const char *path,
+                     sqfs_vfs_dirent_t **entries, size_t *count);
+
+// 读取符号链接
+int sqfs_vfs_readlink(sqfs_ctx_t *ctx, const char *path,
+                      char *buf, size_t size);
+
+// 文件系统统计
+int sqfs_vfs_statfs(sqfs_ctx_t *ctx, sqfs_vfs_statfs_t *stat);
+
+// 扩展属性
+int sqfs_vfs_getxattr(sqfs_ctx_t *ctx, const char *path,
+                      const char *name, void *value, size_t size);
+int sqfs_vfs_listxattr(sqfs_ctx_t *ctx, const char *path,
+                       char *list, size_t size);
+```
+
+---
+
+## 4. 核心数据结构
+
+### 4.1 上下文结构
+
+```c
+// src/core/context.h
+
+// 主上下文结构 (VFS 无关)
+typedef struct sqfs_ctx {
+    sqfs_superblock_t          *sb;           // 超级块
+    sqfs_compressor_t          *comp;         // 压缩器实例
+    sqfs_cache_t                inode_cache;  // Inode 缓存
+    sqfs_cache_t                dir_cache;    // 目录缓存
+    sqfs_cache_t                meta_cache;   // 元数据块缓存
+    sqfs_cache_t                data_cache;   // 数据块缓存
+    uint32_t                   *id_table;     // UID/GID 表
+    size_t                      id_count;     // ID 表条目数
+
+    // 碎片表 (延迟加载)
+    sqfs_fragment_table_t      *fragment_table;
+    bool                        fragment_table_loaded;
+
+    // 扩展属性表 (延迟加载)
+    struct sqfs_xattr_table    *xattr_table;
+
+    // 配置
+    int                         no_cache;     // 禁用缓存标志
+    int                         debug_level;  // 调试级别
+} sqfs_ctx_t;
+
+// 向后兼容别名
+typedef sqfs_ctx_t sqfs_fuse_ctx_t;
+```
+
+### 4.2 Superblock (96 字节)
+
+```c
+// src/core/superblock.h
 
 #define SQUASHFS_MAGIC        0x73717368  // "hsqs" on disk
 #define SQUASHFS_VERSION_MAJOR 4
@@ -139,10 +381,10 @@ typedef struct {
 } sqfs_superblock_t;
 ```
 
-### 3.2 Inode 类型与结构
+### 4.3 Inode 类型与结构
 
 ```c
-// src/inode.h
+// src/core/inode.h
 
 // Inode 类型枚举
 typedef enum {
@@ -217,29 +459,8 @@ typedef struct __attribute__((packed)) {
     // 后跟 block_sizes[] 数组
 } sqfs_inode_lfile_t;
 
-// Basic Symlink Inode
-typedef struct __attribute__((packed)) {
-    sqfs_inode_header_t header;
-    uint32_t link_count;
-    uint32_t target_size;
-    // 后跟 target_path[] 字节数组
-} sqfs_inode_symlink_t;
-
-// Device Inode (Block/Char)
-typedef struct __attribute__((packed)) {
-    sqfs_inode_header_t header;
-    uint32_t link_count;
-    uint32_t device_number;    // major/minor 编码
-} sqfs_inode_dev_t;
-
-// IPC Inode (FIFO/Socket)
-typedef struct __attribute__((packed)) {
-    sqfs_inode_header_t header;
-    uint32_t link_count;
-} sqfs_inode_ipc_t;
-
 // 运行时 Inode 结构 (解析后的统一表示)
-typedef struct {
+struct sqfs_inode {
     uint64_t inode_number;
     sqfs_inode_type_t type;
     uint16_t permissions;
@@ -281,13 +502,15 @@ typedef struct {
     };
 
     uint32_t *block_sizes;     // 数据块大小数组 (动态分配)
-} sqfs_inode_t;
+};
+
+typedef struct sqfs_inode sqfs_inode_t;
 ```
 
-### 3.3 目录表结构
+### 4.4 目录表结构
 
 ```c
-// src/directory.h
+// src/core/directory.h
 
 // 目录表头
 typedef struct __attribute__((packed)) {
@@ -305,26 +528,19 @@ typedef struct __attribute__((packed)) {
     // 后跟 name[] 字节数组
 } sqfs_dir_entry_t;
 
-// 目录索引 (仅 Extended Directory)
-typedef struct __attribute__((packed)) {
-    uint32_t index;            // 字节偏移
-    uint32_t start;            // 目录表块位置
-    uint32_t name_size;        // 名称长度 - 1
-    // 后跟 name[] 字节数组
-} sqfs_dir_index_t;
-
 // 运行时目录条目
 typedef struct {
     char *name;
     uint64_t inode_number;
+    uint64_t inode_ref;        // Inode 引用
     sqfs_inode_type_t type;
 } sqfs_dirent_t;
 ```
 
-### 3.4 Fragment 表结构
+### 4.5 Fragment 表结构
 
 ```c
-// src/fragment.h
+// src/core/fragment.h
 
 // Fragment 表条目 (16 字节)
 typedef struct __attribute__((packed)) {
@@ -332,44 +548,16 @@ typedef struct __attribute__((packed)) {
     uint32_t size;             // 压缩后大小, bit24 = 未压缩
     uint32_t unused;
 } sqfs_frag_entry_t;
-
-// Fragment 缓存项
-typedef struct {
-    uint64_t block_start;
-    void *data;                // 解压后的数据 (block_size 大小)
-    size_t data_size;
-    bool cached;
-} sqfs_fragment_t;
 ```
 
-### 3.5 Xattr 表结构
+### 4.6 Xattr 表结构
 
 ```c
-// src/xattr.h
-
-// Xattr 前缀类型
-typedef enum {
-    SQFS_XATTR_PREFIX_USER     = 0,
-    SQFS_XATTR_PREFIX_TRUSTED  = 1,
-    SQFS_XATTR_PREFIX_SECURITY = 2,
-} sqfs_xattr_prefix_t;
-
-// Xattr 键结构
-typedef struct __attribute__((packed)) {
-    uint16_t type;             // 前缀类型 | 0x0100 表示 out-of-line
-    uint16_t name_size;
-    // 后跟 name[] 字节数组
-} sqfs_xattr_key_t;
-
-// Xattr 值结构
-typedef struct __attribute__((packed)) {
-    uint32_t value_size;
-    // 后跟 value[] 字节数组
-} sqfs_xattr_value_t;
+// src/core/xattr.h
 
 // Xattr ID 表条目 (16 字节)
 typedef struct __attribute__((packed)) {
-    uint64_t xattr_ref;        // 元数据引用 (位置 << 16 | 偏移)
+    uint64_t xattr_ref;        // 元数据引用
     uint32_t count;            // 键值对数量
     uint32_t size;             // 总大小
 } sqfs_xattr_id_entry_t;
@@ -384,9 +572,9 @@ typedef struct {
 
 ---
 
-## 4. 缓存系统设计
+## 5. 缓存系统设计
 
-### 4.1 缓存层次结构
+### 5.1 缓存层次结构
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -401,36 +589,30 @@ typedef struct {
    └─────────┘ └─────────┘ └─────────┘ └─────────┘
 ```
 
-### 4.2 通用 LRU 缓存接口
+### 5.2 通用 LRU 缓存接口
 
 ```c
-// src/cache.h
+// src/core/cache.h
 
-// 缓存键类型
 typedef uint64_t cache_key_t;
-
-// 缓存值释放函数
 typedef void (*cache_free_fn)(void *value);
 
-// LRU 缓存结构
 typedef struct {
-    size_t max_entries;        // 最大条目数
-    size_t current_entries;    // 当前条目数
-    size_t max_memory;         // 最大内存使用 (字节)
-    size_t current_memory;     // 当前内存使用
+    size_t max_entries;
+    size_t current_entries;
+    size_t max_memory;
+    size_t current_memory;
 
-    pthread_rwlock_t lock;     // 读写锁
-    struct cache_entry *head;  // LRU 链表头 (最近使用)
-    struct cache_entry *tail;  // LRU 链表尾 (最少使用)
+    pthread_rwlock_t lock;
+    struct cache_entry *head;
+    struct cache_entry *tail;
 
-    cache_free_fn free_fn;     // 值释放函数
+    cache_free_fn free_fn;
 
-    // 哈希表 (开放寻址)
     struct cache_entry **buckets;
     size_t bucket_count;
 } sqfs_cache_t;
 
-// 缓存操作接口
 int sqfs_cache_init(sqfs_cache_t *cache, size_t max_entries,
                     size_t max_memory, cache_free_fn free_fn);
 void sqfs_cache_destroy(sqfs_cache_t *cache);
@@ -439,14 +621,9 @@ void *sqfs_cache_get(sqfs_cache_t *cache, cache_key_t key);
 int sqfs_cache_put(sqfs_cache_t *cache, cache_key_t key, void *value,
                    size_t memory_size);
 void sqfs_cache_remove(sqfs_cache_t *cache, cache_key_t key);
-void sqfs_cache_clear(sqfs_cache_t *cache);
-
-// 统计接口
-size_t sqfs_cache_hits(sqfs_cache_t *cache);
-size_t sqfs_cache_misses(sqfs_cache_t *cache);
 ```
 
-### 4.3 各层缓存配置
+### 5.3 各层缓存配置
 
 ```c
 // 默认缓存配置
@@ -457,7 +634,7 @@ size_t sqfs_cache_misses(sqfs_cache_t *cache);
 #define CACHE_DIR_MAX_MEMORY       (2 * 1024 * 1024)   // 2 MiB
 
 #define CACHE_META_MAX_ENTRIES     256
-#define CACHE_META_MAX_MEMORY      (8 * 1024 * 1024)   // 8 MiB (每个块 8 KiB)
+#define CACHE_META_MAX_MEMORY      (8 * 1024 * 1024)   // 8 MiB
 
 #define CACHE_DATA_MAX_ENTRIES     128
 #define CACHE_DATA_MAX_MEMORY      (16 * 1024 * 1024)  // 16 MiB
@@ -465,147 +642,122 @@ size_t sqfs_cache_misses(sqfs_cache_t *cache);
 
 ---
 
-## 5. 压缩器抽象层
+## 6. FUSE 后端
 
-### 5.1 压缩器接口
+### 6.1 FUSE 操作映射
 
-```c
-// src/compressor.h
+FUSE 后端位于 `src/fuse/`，通过 `vfs_fuse.c` 将 FUSE 操作映射到 VFS 接口。
 
-// 压缩器操作接口
-typedef struct {
-    const char *name;
-    int (*decompress)(const void *src, size_t src_size,
-                      void *dst, size_t dst_size);
-    int (*init)(void **ctx);
-    void (*destroy)(void *ctx);
-} sqfs_compressor_t;
-
-// 压缩器注册
-int sqfs_compressor_register(sqfs_compressor_t *comp);
-sqfs_compressor_t *sqfs_compressor_get(sqfs_compressor_t type);
-
-// 内置压缩器
-extern sqfs_compressor_t sqfs_compressor_zlib;
-extern sqfs_compressor_t sqfs_compressor_zstd;
-```
-
-### 5.2 错误码定义
-
-```c
-// 压缩器返回值
-#define SQFS_COMP_OK           0    // 成功
-#define SQFS_COMP_ERROR       -1    // 一般错误
-#define SQFS_COMP_OVERFLOW    -2    // 输出缓冲区不足
-#define SQFS_COMP_CORRUPT     -3    // 数据损坏
-#define SQFS_COMP_UNSUPPORTED -4    // 不支持的压缩算法
-```
-
----
-
-## 6. 元数据块读取器
-
-### 6.1 元数据引用格式
-
-SquashFS 使用 64 位元数据引用:
-- 高 48 位: 元数据块在磁盘上的位置 (相对于表起始)
-- 低 16 位: 解压后块内偏移
-
-```c
-// src/utils.h
-
-// 元数据引用解析
-static inline uint64_t sqfs_meta_block_pos(uint64_t ref) {
-    return ref >> 16;
-}
-
-static inline uint16_t sqfs_meta_block_offset(uint64_t ref) {
-    return ref & 0xFFFF;
-}
-
-static inline uint64_t sqfs_make_meta_ref(uint64_t pos, uint16_t offset) {
-    return (pos << 16) | offset;
-}
-```
-
-### 6.2 元数据块读取接口
-
-```c
-// src/utils.h
-
-// 元数据块头 (16 位)
-// bit 15: 是否未压缩
-// bit 0-14: 压缩后大小 (最大 8 KiB)
-#define SQFS_META_UNCOMPRESSED_FLAG 0x8000
-#define SQFS_META_MAX_SIZE          8192
-
-// 读取元数据块
-int sqfs_read_metadata_block(int fd, uint64_t pos,
-                             void *buffer, size_t *out_size,
-                             sqfs_compressor_t *comp);
-
-// 读取跨越块边界的元数据记录
-int sqfs_read_metadata(int fd, uint64_t ref,
-                       void *buffer, size_t size,
-                       sqfs_cache_t *block_cache,
-                       sqfs_compressor_t *comp);
-```
-
----
-
-## 7. FUSE 操作映射
-
-### 7.1 支持的 FUSE 操作
-
-| FUSE 操作 | 实现函数 | 说明 |
+| FUSE 操作 | VFS 操作 | 说明 |
 |-----------|----------|------|
-| `getattr` | `sqfs_fuse_getattr` | 获取文件属性 |
-| `readdir` | `sqfs_fuse_readdir` | 读取目录内容 |
-| `open` | `sqfs_fuse_open` | 打开文件 |
-| `read` | `sqfs_fuse_read` | 读取文件内容 |
-| `release` | `sqfs_fuse_release` | 关闭文件 |
-| `readlink` | `sqfs_fuse_readlink` | 读取符号链接目标 |
-| `statfs` | `sqfs_fuse_statfs` | 获取文件系统统计 |
-| `getxattr` | `sqfs_fuse_getxattr` | 获取扩展属性 |
-| `listxattr` | `sqfs_fuse_listxattr` | 列出扩展属性 |
+| `getattr` | `sqfs_vfs_getattr` | 获取文件属性 |
+| `readdir` | `sqfs_vfs_readdir` | 读取目录内容 |
+| `open` | `sqfs_vfs_open` | 打开文件 |
+| `read` | `sqfs_vfs_read` | 读取文件内容 |
+| `release` | `sqfs_vfs_release` | 关闭文件 |
+| `readlink` | `sqfs_vfs_readlink` | 读取符号链接目标 |
+| `statfs` | `sqfs_vfs_statfs` | 获取文件系统统计 |
+| `getxattr` | `sqfs_vfs_getxattr` | 获取扩展属性 |
+| `listxattr` | `sqfs_vfs_listxattr` | 列出扩展属性 |
 
-### 7.2 私有数据结构
+### 6.2 FUSE 适配器示例
 
 ```c
-// src/main.c
+// src/fuse/vfs_fuse.c
 
-// FUSE 私有数据
-typedef struct {
-    sqfs_superblock_t *sb;
-    sqfs_compressor_t *comp;
-    sqfs_cache_t inode_cache;
-    sqfs_cache_t dir_cache;
-    sqfs_cache_t meta_cache;
-    sqfs_cache_t data_cache;
-    uint32_t *id_table;        // UID/GID 表 (已加载)
-    size_t id_count;
-} sqfs_fuse_ctx_t;
+static int sqfs_fuse_getattr(const char *path, struct stat *stbuf,
+                             struct fuse_file_info *fi) {
+    sqfs_ctx_t *ctx = fuse_get_context()->private_data;
+    sqfs_vfs_attr_t attr;
+    int ret;
+
+    ret = sqfs_vfs_getattr(ctx, path, &attr);
+    if (ret != 0)
+        return ret;
+
+    // 转换 sqfs_vfs_attr_t 到 struct stat
+    stbuf->st_ino = attr.ino;
+    stbuf->st_mode = attr.mode;
+    stbuf->st_nlink = attr.nlink;
+    stbuf->st_uid = attr.uid;
+    stbuf->st_gid = attr.gid;
+    stbuf->st_size = attr.size;
+    stbuf->st_blksize = attr.blksize;
+    stbuf->st_blocks = attr.blocks;
+    stbuf->st_mtime = attr.mtime;
+    // ...
+
+    return 0;
+}
+
+struct fuse_operations sqfs_fuse_operations = {
+    .getattr    = sqfs_fuse_getattr,
+    .readdir    = sqfs_fuse_readdir,
+    .open       = sqfs_fuse_open,
+    .read       = sqfs_fuse_read,
+    .release    = sqfs_fuse_release,
+    .readlink   = sqfs_fuse_readlink,
+    .statfs     = sqfs_fuse_statfs,
+    .getxattr   = sqfs_fuse_getxattr,
+    .listxattr  = sqfs_fuse_listxattr,
+};
 ```
 
-### 7.3 路径解析
+---
+
+## 7. 内核模块框架
+
+### 7.1 概述
+
+内核模块框架位于 `src/kernel/`，提供 Linux VFS 适配器的骨架代码。完整实现需要在内核源码树中编译。
+
+### 7.2 Linux VFS 操作结构
 
 ```c
-// src/inode.h
+// src/kernel/vfs_kernel.c
 
-// 路径解析结果
-typedef struct {
-    uint64_t inode_number;
-    sqfs_inode_t *inode;
-    char *remaining;           // 未解析的路径部分 (对于符号链接)
-} sqfs_path_resolve_t;
+#ifdef __KERNEL__
 
-// 路径解析接口
-int sqfs_resolve_path(sqfs_fuse_ctx_t *ctx, const char *path,
-                      sqfs_path_resolve_t *result);
+#include <linux/fs.h>
+#include <linux/module.h>
 
-// 通过 Inode 号获取 Inode
-int sqfs_get_inode(sqfs_fuse_ctx_t *ctx, uint64_t inode_num,
-                   sqfs_inode_t **inode);
+// 超级块操作
+static const struct super_operations squashfs_super_ops = {
+    .alloc_inode    = squashfs_alloc_inode,
+    .destroy_inode  = squashfs_destroy_inode,
+    .statfs         = squashfs_statfs,
+};
+
+// inode 操作
+static const struct inode_operations squashfs_inode_ops = {
+    .getattr    = squashfs_getattr,
+    .lookup     = squashfs_lookup,
+};
+
+// 文件操作
+static const struct file_operations squashfs_file_ops = {
+    .read_iter  = squashfs_read_iter,
+    .open       = squashfs_open,
+    .release    = squashfs_release,
+};
+
+// 目录操作
+static const struct file_operations squashfs_dir_ops = {
+    .iterate_shared = squashfs_readdir,
+};
+
+// 从 sqfs_vfs_attr_t 填充 Linux inode
+void squashfs_fill_inode(struct inode *inode, sqfs_vfs_attr_t *attr) {
+    inode->i_ino = attr->ino;
+    inode->i_mode = attr->mode;
+    set_nlink(inode, attr->nlink);
+    i_uid_write(inode, attr->uid);
+    i_gid_write(inode, attr->gid);
+    inode->i_size = attr->size;
+    // ...
+}
+
+#endif /* __KERNEL__ */
 ```
 
 ---
@@ -615,9 +767,8 @@ int sqfs_get_inode(sqfs_fuse_ctx_t *ctx, uint64_t inode_num,
 ### 8.1 错误码定义
 
 ```c
-// src/utils.h
+// src/core/utils.h
 
-// SquashFS 错误码 (负值, 与 errno 兼容)
 typedef enum {
     SQFS_OK = 0,
     SQFS_ERR_CORRUPT      = -1001,  // 镜像损坏
@@ -635,78 +786,33 @@ typedef enum {
 } sqfs_error_t;
 
 // 转换为 errno
-static inline int sqfs_errno(sqfs_error_t err) {
-    switch (err) {
-        case SQFS_OK:              return 0;
-        case SQFS_ERR_CORRUPT:
-        case SQFS_ERR_BAD_MAGIC:
-        case SQFS_ERR_BAD_VERSION:
-        case SQFS_ERR_BAD_INODE:
-        case SQFS_ERR_BAD_DIR:
-        case SQFS_ERR_BAD_XATTR:
-        case SQFS_ERR_BAD_BLOCK:   return EIO;
-        case SQFS_ERR_NOT_FOUND:   return ENOENT;
-        case SQFS_ERR_NO_MEMORY:   return ENOMEM;
-        case SQFS_ERR_IO:          return EIO;
-        case SQFS_ERR_OVERFLOW:    return EOVERFLOW;
-        default:                   return EIO;
-    }
-}
-```
-
-### 8.2 错误处理宏
-
-```c
-// src/utils.h
-
-// 错误检查宏
-#define SQFS_CHECK(cond, err) do { \
-    if (!(cond)) return (err); \
-} while(0)
-
-#define SQFS_CHECK_GOTO(cond, err, label) do { \
-    if (!(cond)) { ret = (err); goto label; } \
-} while(0)
-
-// 日志宏
-#ifdef SQFS_DEBUG
-#define SQFS_LOG(fmt, ...) fprintf(stderr, "[sqfs] " fmt "\n", ##__VA_ARGS__)
-#else
-#define SQFS_LOG(fmt, ...) do {} while(0)
-#endif
+int sqfs_errno(sqfs_error_t err);
 ```
 
 ---
 
-## 9. 线程安全设计
+## 9. 构建系统
 
-### 9.1 锁策略
+### 9.1 输出目标
 
-| 数据结构 | 锁类型 | 粒度 |
-|----------|--------|------|
-| 缓存 | 读写锁 | 整体 |
-| Superblock | 无锁 (只读) | - |
-| Inode | 无锁 (缓存后只读) | - |
-| 文件描述符 | 互斥锁 | 每个文件 |
+| 目标 | 类型 | 说明 |
+|------|------|------|
+| `libsquashfs_core.a` | 静态库 | 核心库，可供多后端复用 |
+| `squashfs-fuse` | 可执行文件 | FUSE 用户态文件系统 |
 
-### 9.2 并发读取流程
+### 9.2 编译命令
 
-```
-Thread 1                    Thread 2
-    │                           │
-    ▼                           ▼
-cache_get (读锁)           cache_get (读锁)
-    │                           │
-    ▼ (命中)                     ▼ (未命中)
-返回数据                    升级写锁
-    │                           │
-    │                           ▼
-    │                      读取+解压
-    │                           │
-    │                           ▼
-    │                      cache_put
-    │                           │
-    ▼                           ▼
+```bash
+# 安装依赖
+sudo apt install libfuse3-dev libzstd-dev zlib1g-dev cmake
+
+# 编译
+mkdir -p build && cd build
+cmake ..
+make -j$(nproc)
+
+# 运行测试
+make test
 ```
 
 ---
@@ -736,7 +842,10 @@ squashfs-fuse [OPTIONS] <image_file> <mount_point>
 - 启用所有缓存层
 - 后台运行 (除非指定 `-f`)
 
+---
 
 ## 11. 问题定位
+
 - 阅读 doc/logging.md 查看日志
-- 遇到数据异常，优先确认 Squashfs 二进制格式规范(doc/squashfs.adoc)，并以其为绝对标准
+- 遇到数据异常，优先确认 Squashfs 二进制格式规范 (doc/squashfs.adoc)，并以其为绝对标准
+- 参考 MEMORY.md 了解关键架构决策
