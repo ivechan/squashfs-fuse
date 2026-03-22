@@ -97,6 +97,16 @@ ctest -L functional         # 只运行功能测试
 | functional_basic | 功能 | 基本功能测试 |
 | functional_xattr | 功能 | 扩展属性测试 |
 | functional_error_paths | 功能 | 错误处理测试 |
+| functional_special_files | 功能 | 特殊文件测试 |
+| functional_hardlinks | 功能 | 硬链接测试 |
+| functional_sparse_files | 功能 | 稀疏文件测试 |
+| functional_large_files | 功能 | 大文件测试 |
+| functional_deep_directories | 功能 | 深层目录测试 |
+| functional_long_filenames | 功能 | 长文件名测试 |
+| functional_special_chars | 功能 | 特殊字符测试 |
+| functional_zstd_compression | 功能 | zstd 压缩测试 |
+| functional_block_sizes | 功能 | 块大小测试 |
+| functional_export_table | 功能 | 导出表测试 |
 | python_read | 功能 | 文件读取测试 |
 
 ### 手动测试
@@ -233,6 +243,20 @@ SquashFS 对导出表、碎片表和 ID 表使用两级查找表：
 - 头部 (16 位): bit 15 = 未压缩标志, bits 0-14 = 压缩后大小
 - 最大解压大小: 8 KiB
 
+## 常见陷阱
+
+### 线程安全
+当前 FUSE 后端使用全局状态 (`g_ctx`, `g_fd`)，仅适用于 FUSE 单进程模型。
+未来内核模块实现需要使用 per-filesystem 上下文。
+
+### 错误码
+VFS 层使用负 errno 值作为错误码 (如 `-ENOENT`)，不要使用硬编码数值。
+定义见 `src/vfs/vfs.h` 的 `sqfs_vfs_result_t` 枚举。
+
+### 向后兼容
+`sqfs_fuse_ctx_t` 是 `sqfs_ctx_t` 的别名，保持 API 兼容性。
+新代码应使用 `sqfs_ctx_t`。
+
 ## 规则
 
 1. **所有计划必须保存到 `doc/plan.md`** - 实现计划和架构决策写入此文件。
@@ -255,6 +279,18 @@ SquashFS 对导出表、碎片表和 ID 表使用两级查找表：
 - **调试构建**: 验证 debug 日志编译
 - **代码风格**: 检查制表符和尾随空格
 - **性能测试**: 快速性能基准测试，结果保存为 artifact
+
+### 提交规范
+
+```bash
+# 提交格式
+git commit -m "type: description"
+# type: feat|fix|docs|refactor|test|perf|chore
+
+# 示例
+git commit -m "feat: add zstd compression support"
+git commit -m "fix: resolve fragment reading issue"
+```
 
 本地验证：
 
