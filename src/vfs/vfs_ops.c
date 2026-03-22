@@ -286,7 +286,7 @@ int sqfs_vfs_open(sqfs_ctx_t *ctx, const char *path, sqfs_vfs_fh_t **fh) {
     /* Verify it's a regular file */
     if (!sqfs_inode_is_file(inode->type)) {
         sqfs_inode_free(inode);
-        return SQFS_VFS_ERR_IS_DIR;
+        return SQFS_VFS_ERR_NOT_FILE;
     }
 
     /* Allocate file handle */

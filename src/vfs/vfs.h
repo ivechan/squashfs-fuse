@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,20 +27,22 @@ extern "C" {
 /*
  * VFS operation result codes.
  * These are negative errno values for compatibility with system calls.
+ * Using errno.h constants ensures portability across platforms.
  */
 typedef enum {
     SQFS_VFS_OK              = 0,
-    SQFS_VFS_ERR_NOT_FOUND   = -2,    /* ENOENT */
-    SQFS_VFS_ERR_NOT_DIR     = -20,   /* ENOTDIR */
-    SQFS_VFS_ERR_IS_DIR      = -21,   /* EISDIR */
-    SQFS_VFS_ERR_ROFS        = -30,   /* EROFS */
-    SQFS_VFS_ERR_NOMEM       = -12,   /* ENOMEM */
-    SQFS_VFS_ERR_INVAL       = -22,   /* EINVAL */
-    SQFS_VFS_ERR_IO          = -5,    /* EIO */
-    SQFS_VFS_ERR_NOSUP       = -95,   /* EOPNOTSUPP */
-    SQFS_VFS_ERR_NODATA      = -61,   /* ENODATA */
-    SQFS_VFS_ERR_BAD_FD      = -9,    /* EBADF */
-    SQFS_VFS_ERR_TOO_BIG     = -75,   /* EOVERFLOW */
+    SQFS_VFS_ERR_NOT_FOUND   = -ENOENT,      /* No such file or directory */
+    SQFS_VFS_ERR_NOT_DIR     = -ENOTDIR,     /* Not a directory */
+    SQFS_VFS_ERR_IS_DIR      = -EISDIR,      /* Is a directory */
+    SQFS_VFS_ERR_NOT_FILE    = -EINVAL,      /* Not a regular file */
+    SQFS_VFS_ERR_ROFS        = -EROFS,       /* Read-only filesystem */
+    SQFS_VFS_ERR_NOMEM       = -ENOMEM,      /* Out of memory */
+    SQFS_VFS_ERR_INVAL       = -EINVAL,      /* Invalid argument */
+    SQFS_VFS_ERR_IO          = -EIO,         /* I/O error */
+    SQFS_VFS_ERR_NOSUP       = -EOPNOTSUPP,  /* Operation not supported */
+    SQFS_VFS_ERR_NODATA      = -ENODATA,     /* No data available */
+    SQFS_VFS_ERR_BAD_FD      = -EBADF,       /* Bad file descriptor */
+    SQFS_VFS_ERR_TOO_BIG     = -EOVERFLOW,   /* Value too large */
 } sqfs_vfs_result_t;
 
 /* ============================================================================

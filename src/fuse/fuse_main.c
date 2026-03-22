@@ -297,6 +297,24 @@ static void print_version(void) {
     printf("Supported compressors: gzip, zstd\n");
 }
 
+/* ============================================================================
+ * Global State
+ * ============================================================================
+ *
+ * Thread Safety Note:
+ * These global variables are used for the FUSE backend's single-process model.
+ * FUSE 3.x handles serialization of callbacks, so concurrent access to g_ctx
+ * is managed by the FUSE library itself.
+ *
+ * For other backends (e.g., kernel module), this pattern should not be used.
+ * Instead, allocate context dynamically and pass through the backend's
+ * private_data mechanism.
+ *
+ * Limitations:
+ * - Only one filesystem instance per process
+ * - Not suitable for library use where multiple mounts may be needed
+ */
+
 /* Global context for FUSE operations */
 static sqfs_ctx_t g_ctx;
 static int g_fd = -1;
