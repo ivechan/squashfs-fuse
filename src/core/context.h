@@ -1,7 +1,8 @@
 /*
- * SquashFS-FUSE - Context Header
+ * SquashFS - Context Header
  *
- * Defines the FUSE context structure shared across all modules.
+ * Defines the core context structure shared across all modules.
+ * This structure is VFS-agnostic and can be used with different backends.
  */
 
 #ifndef SQFS_CONTEXT_H
@@ -27,14 +28,15 @@ extern "C" {
 struct sqfs_xattr_table;
 
 /* ============================================================================
- * FUSE Private Context
+ * Core Context Structure
  * ============================================================================ */
 
 /*
- * sqfs_fuse_ctx_t holds all runtime state for a mounted SquashFS image.
- * This structure is passed to all FUSE operations as private data.
+ * sqfs_ctx_t holds all runtime state for a mounted SquashFS image.
+ * This structure is VFS-agnostic and can be used with different backends
+ * (FUSE, Linux kernel module, etc.).
  */
-typedef struct sqfs_fuse_ctx {
+typedef struct sqfs_ctx {
     sqfs_superblock_t          *sb;           /* Superblock */
     sqfs_compressor_t          *comp;         /* Compressor instance */
     sqfs_cache_t                inode_cache;  /* Inode cache */
@@ -54,7 +56,17 @@ typedef struct sqfs_fuse_ctx {
     /* Configuration */
     int                         no_cache;     /* Disable caching flag */
     int                         debug_level;  /* Debug verbosity level */
-} sqfs_fuse_ctx_t;
+} sqfs_ctx_t;
+
+/* ============================================================================
+ * Backward Compatibility
+ * ============================================================================ */
+
+/*
+ * sqfs_fuse_ctx_t is retained as an alias for backward compatibility.
+ * New code should use sqfs_ctx_t instead.
+ */
+typedef sqfs_ctx_t sqfs_fuse_ctx_t;
 
 #ifdef __cplusplus
 }

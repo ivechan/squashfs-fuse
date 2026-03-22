@@ -142,8 +142,11 @@ int sqfs_data_read_block(int fd, uint64_t block_pos, uint32_t block_size,
 /*
  * Read file data with streaming support
  */
-struct sqfs_fuse_ctx;
-int sqfs_data_read(struct sqfs_fuse_ctx *fuse_ctx, sqfs_inode_t *inode,
+struct sqfs_ctx;
+typedef struct sqfs_ctx sqfs_ctx_t;
+typedef sqfs_ctx_t sqfs_fuse_ctx_t;  /* Backward compatibility */
+
+int sqfs_data_read(sqfs_ctx_t *ctx, sqfs_inode_t *inode,
                    uint64_t offset, void *buffer, size_t size);
 
 /*

@@ -183,7 +183,7 @@ typedef struct __attribute__((packed)) {
  * Runtime Inode Structure
  * ============================================================================ */
 
-typedef struct {
+struct sqfs_inode {
     uint64_t inode_number;
     sqfs_inode_type_t type;
     uint16_t permissions;
@@ -230,14 +230,19 @@ typedef struct {
     };
 
     uint32_t *block_sizes;     /* Data block size array (dynamically allocated) */
-} sqfs_inode_t;
+};
+
+typedef struct sqfs_inode sqfs_inode_t;
 
 /* ============================================================================
- * FUSE Context Forward Declaration
+ * Context Forward Declaration
  * ============================================================================ */
 
-struct sqfs_fuse_ctx;
-typedef struct sqfs_fuse_ctx sqfs_fuse_ctx_t;
+struct sqfs_ctx;
+typedef struct sqfs_ctx sqfs_ctx_t;
+
+/* Backward compatibility */
+typedef sqfs_ctx_t sqfs_fuse_ctx_t;
 
 /* ============================================================================
  * Inode Operations

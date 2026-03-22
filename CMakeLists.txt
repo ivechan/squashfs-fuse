@@ -22,39 +22,80 @@ else()
     add_compile_definitions(SQFS_LOG_LEVEL=2)  # WARN
 endif()
 
-# 源文件
-set(SOURCES
-    src/main.c
-    src/superblock.c
-    src/inode.c
-    src/directory.c
-    src/data.c
-    src/fragment.c
-    src/xattr.c
-    src/compressor.c
-    src/cache.c
-    src/utils.c
-    src/log.c
-    src/stats.c
+# ============================================================================
+# Core Library Sources (VFS-agnostic)
+# ============================================================================
+
+set(CORE_SOURCES
+    src/core/superblock.c
+    src/core/inode.c
+    src/core/directory.c
+    src/core/data.c
+    src/core/fragment.c
+    src/core/xattr.c
+    src/core/compressor.c
+    src/core/cache.c
+    src/core/utils.c
+    src/core/log.c
+    src/core/stats.c
 )
 
-# 可执行文件
-add_executable(squashfs-fuse ${SOURCES})
+# ============================================================================
+# VFS Abstraction Layer
+# ============================================================================
 
-# 链接库
-target_include_directories(squashfs-fuse PRIVATE
-    ${FUSE3_INCLUDE_DIRS}
+set(VFS_SOURCES
+    src/vfs/vfs_ops.c
+)
+
+# Build static library
+add_library(squashfs_core STATIC ${CORE_SOURCES} ${VFS_SOURCES})
+
+target_include_directories(squashfs_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${CMAKE_SOURCE_DIR}/src/vfs
     ${ZLIB_INCLUDE_DIRS}
     ${ZSTD_INCLUDE_DIRS}
 )
-target_link_libraries(squashfs-fuse
-    ${FUSE3_LIBRARIES}
+
+target_link_libraries(squashfs_core
     ${ZLIB_LIBRARIES}
     ${ZSTD_LIBRARIES}
 )
 
+# ============================================================================
+# FUSE Backend
+# ============================================================================
+
+set(FUSE_SOURCES
+    src/fuse/fuse_main.c
+    src/fuse/vfs_fuse.c
+)
+
+# 可执行文件
+add_executable(squashfs-fuse ${FUSE_SOURCES})
+
+target_include_directories(squashfs-fuse PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${CMAKE_SOURCE_DIR}/src/vfs
+    ${CMAKE_SOURCE_DIR}/src/fuse
+    ${FUSE3_INCLUDE_DIRS}
+    ${ZLIB_INCLUDE_DIRS}
+    ${ZSTD_INCLUDE_DIRS}
+)
+
+target_link_libraries(squashfs-fuse
+    squashfs_core
+    ${FUSE3_LIBRARIES}
+)
+
 # 安装
 install(TARGETS squashfs-fuse DESTINATION bin)
+install(TARGETS squashfs_core ARCHIVE DESTINATION lib)
+install(DIRECTORY src/core/ DESTINATION include/squashfs/core FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY src/vfs/ DESTINATION include/squashfs/vfs FILES_MATCHING PATTERN "*.h")
 
 # ============================================================================
 # Testing
@@ -82,23 +123,11 @@ if(BUILD_TESTS)
             tests/unit/test_export.c
         )
 
-        # Common sources for tests (exclude main.c)
-        set(TEST_LIB_SOURCES
-            src/cache.c
-            src/compressor.c
-            src/utils.c
-            src/superblock.c
-            src/log.c
-            src/stats.c
-            src/inode.c
-            src/directory.c
-            src/fragment.c
-            src/data.c
-        )
-
         # Include directories for tests
         set(TEST_INCLUDE_DIRS
             ${CMAKE_SOURCE_DIR}/src
+            ${CMAKE_SOURCE_DIR}/src/core
+            ${CMAKE_SOURCE_DIR}/src/vfs
             ${ZLIB_INCLUDE_DIRS}
             ${ZSTD_INCLUDE_DIRS}
         )
@@ -107,10 +136,10 @@ if(BUILD_TESTS)
         foreach(TEST_SOURCE ${UNIT_TEST_SOURCES})
             get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
 
-            add_executable(${TEST_NAME} ${TEST_SOURCE} ${TEST_LIB_SOURCES})
+            add_executable(${TEST_NAME} ${TEST_SOURCE})
 
             target_include_directories(${TEST_NAME} PRIVATE ${TEST_INCLUDE_DIRS})
-            target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} ${ZLIB_LIBRARIES} ${ZSTD_LIBRARIES} m)
+            target_link_libraries(${TEST_NAME} squashfs_core ${CMOCKA_LIBRARIES} m)
             target_include_directories(${TEST_NAME} PRIVATE ${CMOCKA_INCLUDE_DIRS})
 
             # Add unit test with label

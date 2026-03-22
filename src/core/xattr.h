@@ -115,8 +115,11 @@ typedef struct sqfs_xattr_table sqfs_xattr_table_t;
  * Context Forward Declaration
  * ============================================================================ */
 
-struct sqfs_fuse_ctx;
-typedef struct sqfs_fuse_ctx sqfs_fuse_ctx_t;
+struct sqfs_ctx;
+typedef struct sqfs_ctx sqfs_ctx_t;
+
+/* Backward compatibility */
+typedef sqfs_ctx_t sqfs_fuse_ctx_t;
 
 /* ============================================================================
  * Xattr Operations

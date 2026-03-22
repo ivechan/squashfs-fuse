@@ -9,6 +9,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 #include "directory.h"
+#include "context.h"
 #include "utils.h"
 #include "superblock.h"
 #include "compressor.h"
@@ -16,16 +17,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-
-/*
- * FUSE context structure
- * This matches the definition in main.c
- */
-struct sqfs_fuse_ctx {
-    sqfs_superblock_t    *sb;           /* Superblock */
-    sqfs_compressor_t    *comp;         /* Compressor instance */
-    /* Other fields not needed by directory operations */
-};
 
 /*
  * Metadata block constants
